@@ -1,0 +1,24 @@
+# IDEs e Sistema
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Docker / PostgreSQL local
+pgdata/
+
+# Java & Spring Boot
+**/target/
+**/.gradle/
+**/build/
+*.jar
+*.war
+*.class
+*.log
+
+# Node & React
+**/node_modules/
+**/dist/
+*.env
+*.env.local
