@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -52,5 +53,19 @@ public class RestricaoService {
 
         restricao.darBaixa();
         return RestricaoResponseDTO.fromEntity(restricaoRepository.save(restricao));
+    }
+
+    public List<RestricaoResponseDTO> listarPorCliente(UUID clienteId) {
+        return restricaoRepository.findByClienteId(clienteId)
+                .stream()
+                .map(RestricaoResponseDTO::fromEntity)
+                .toList();
+    }
+
+    public List<RestricaoResponseDTO> listarTodas() {
+        return restricaoRepository.findAll()
+                .stream()
+                .map(RestricaoResponseDTO::fromEntity)
+                .toList();
     }
 }

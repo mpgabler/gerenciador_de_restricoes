@@ -16,7 +16,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/clientes")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*") // Permite chamadas do frontend durante o desenvolvimento
 public class ClienteController {
 
     private final ClienteService clienteService;

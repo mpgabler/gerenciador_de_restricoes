@@ -11,7 +11,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/valida-transacao")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ValidadorTransacaoController {
 
     private final ValidadorTransacaoService validadorTransacaoService;
