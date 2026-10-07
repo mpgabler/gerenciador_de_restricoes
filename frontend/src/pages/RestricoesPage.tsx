@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { restricaoService, type RestricaoResponseDTO } from '../services/restricaoService';
 import { clienteService, type Cliente } from '../services/clienteService';
 import { ModalNovaRestricaoGlobal } from '../components/modals/ModalNovaRestricaoGlobal';
@@ -41,14 +41,65 @@ export const RestricoesPage: React.FC = () => {
     }
   };
 
-  const restricoesFiltradas = restricoes.filter((r) => {
-    const atendeBusca =
-      (r.clienteNome || '').toLowerCase().includes(busca.toLowerCase()) ||
-      r.tipoCodigo.toLowerCase().includes(busca.toLowerCase());
-    const atendeTipo = filtroTipo === 'TODOS' || r.tipoCodigo === filtroTipo;
-    const atendeStatus = filtroStatus === 'TODOS' || r.status === filtroStatus;
-    return atendeBusca && atendeTipo && atendeStatus;
-  });
+  // Mapeamento por ID
+  const mapaClientesPorId = useMemo(() => {
+    const map = new Map<string, Cliente>();
+    clientes.forEach((c) => {
+      if (c.id) map.set(c.id, c);
+    });
+    return map;
+  }, [clientes]);
+
+  // Mapeamento por Nome (Fallback de resiliência caso clienteId venha ausente no DTO)
+  const mapaClientesPorNome = useMemo(() => {
+    const map = new Map<string, Cliente>();
+    clientes.forEach((c) => {
+      if (c.nome) map.set(c.nome.trim().toLowerCase(), c);
+    });
+    return map;
+  }, [clientes]);
+
+  // Recupera o documento (CPF/CNPJ) e o tipo de pessoa do cliente
+  const obterDadosCliente = (r: RestricaoResponseDTO) => {
+    const porId = r.clienteId ? mapaClientesPorId.get(r.clienteId) : undefined;
+    const porNome = r.clienteNome ? mapaClientesPorNome.get(r.clienteNome.trim().toLowerCase()) : undefined;
+    const cliente = porId || porNome;
+
+    const documento =
+      (r as any).documento ||
+      (r as any).clienteDocumento ||
+      (r as any).cpf ||
+      cliente?.documento ||
+      (cliente as any)?.cpf ||
+      '';
+
+    const tipoPessoa = cliente?.tipoPessoa || (documento.replace(/\D/g, '').length > 11 ? 'PJ' : 'PF');
+
+    return { cliente, documento, tipoPessoa };
+  };
+
+  // Filtragem combinada corrigida (com filtroStatus alinhado ao useState)
+  const restricoesFiltradas = useMemo(() => {
+    const termoBusca = busca.trim().toLowerCase();
+    const digitosBusca = busca.replace(/\D/g, '');
+
+    return restricoes.filter((r) => {
+      const { documento } = obterDadosCliente(r);
+      const documentoDigitos = documento.replace(/\D/g, '');
+
+      const matchNome = (r.clienteNome || '').toLowerCase().includes(termoBusca);
+      const matchTipo = r.tipoCodigo.toLowerCase().includes(termoBusca);
+      const matchDocumento =
+        (documento && documento.toLowerCase().includes(termoBusca)) ||
+        (digitosBusca.length > 0 && documentoDigitos.includes(digitosBusca));
+
+      const atendeBusca = !termoBusca || matchNome || matchTipo || matchDocumento;
+      const atendeTipo = filtroTipo === 'TODOS' || r.tipoCodigo === filtroTipo;
+      const atendeStatus = filtroStatus === 'TODOS' || r.status === filtroStatus;
+
+      return atendeBusca && atendeTipo && atendeStatus;
+    });
+  }, [restricoes, mapaClientesPorId, mapaClientesPorNome, busca, filtroTipo, filtroStatus]);
 
   const totalAtivas = restricoes.filter((r) => r.status === 'ATIVA').length;
   const totalBaixadas = restricoes.filter((r) => r.status === 'BAIXADA').length;
@@ -83,7 +134,7 @@ export const RestricoesPage: React.FC = () => {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por cliente ou tipo..."
+            placeholder="Buscar por cliente, CPF/CNPJ ou tipo..."
             className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
 
@@ -138,6 +189,7 @@ export const RestricoesPage: React.FC = () => {
               ) : (
                 restricoesFiltradas.map((r) => {
                   const isAtiva = r.status === 'ATIVA';
+                  const { documento, tipoPessoa } = obterDadosCliente(r);
                   const valorFormatado = new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
                     currency: 'BRL',
@@ -145,7 +197,15 @@ export const RestricoesPage: React.FC = () => {
 
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-slate-800">{r.clienteNome || 'Cliente'}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-800">
+                        {r.clienteNome || 'Cliente'}
+                        {documento && (
+                          <span className="block text-xs font-normal text-slate-400">
+                            {tipoPessoa === 'PJ' ? 'CNPJ: ' : 'CPF: '}
+                            {documento}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 font-semibold text-slate-800">
                         <span className="inline-flex items-center gap-1.5">
                           <span

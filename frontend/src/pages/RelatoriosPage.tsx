@@ -1,11 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { restricaoService, type RestricaoResponseDTO } from '../services/restricaoService';
 import { clienteService, type Cliente } from '../services/clienteService';
+
+type CampoOrdenacao = 'clienteNome' | 'tipoCodigo' | 'valor' | 'dataOcorrencia' | 'status';
 
 export const RelatoriosPage: React.FC = () => {
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [carregando, setCarregando] = useState<boolean>(true);
+
+  // 1. Estados de Filtros e Busca
+  const [busca, setBusca] = useState<string>('');
+  const [tipoFiltro, setTipoFiltro] = useState<string>('TODOS');
+  const [statusFiltro, setStatusFiltro] = useState<string>('TODOS');
+  const [dataInicio, setDataInicio] = useState<string>('');
+  const [dataFim, setDataFim] = useState<string>('');
+  const [atalhoAtivo, setAtalhoAtivo] = useState<string>('todos');
+
+  // 2. Estados da Tabela (Ordenação e Paginação)
+  const [campoOrdenacao, setCampoOrdenacao] = useState<CampoOrdenacao>('dataOcorrencia');
+  const [ordemAsc, setOrdemAsc] = useState<boolean>(false);
+  const [paginaAtual, setPaginaAtual] = useState<number>(1);
+  const itensPorPagina = 5;
 
   useEffect(() => {
     carregarDados();
@@ -27,58 +43,471 @@ export const RelatoriosPage: React.FC = () => {
     }
   };
 
-  // Cálculos analíticos
-  const totalRestricoes = restricoes.length;
-  const restricoesAtivas = restricoes.filter((r) => r.status === 'ATIVA');
-  const restricoesBaixadas = restricoes.filter((r) => r.status === 'BAIXADA');
+  // Mapeamento rápido de clientes por ID para buscar CPF/CNPJ
+  const mapaClientes = useMemo(() => {
+    const map = new Map<string, Cliente>();
+    clientes.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [clientes]);
 
-  const volumeInadimplenciaAtiva = restricoesAtivas
+  // Aplicação de atalhos rápidos de data
+  const aplicarAtalhoPeriodo = (atalho: 'todos' | 'hoje' | '7dias' | 'mes' | 'ano') => {
+    setAtalhoAtivo(atalho);
+    const hoje = new Date();
+    const hojeFormatado = hoje.toISOString().split('T')[0];
+
+    if (atalho === 'todos') {
+      setDataInicio('');
+      setDataFim('');
+      return;
+    }
+
+    if (atalho === 'hoje') {
+      setDataInicio(hojeFormatado);
+      setDataFim(hojeFormatado);
+      return;
+    }
+
+    if (atalho === '7dias') {
+      const d7 = new Date();
+      d7.setDate(hoje.getDate() - 7);
+      setDataInicio(d7.toISOString().split('T')[0]);
+      setDataFim(hojeFormatado);
+      return;
+    }
+
+    if (atalho === 'mes') {
+      const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      setDataInicio(inicioMes.toISOString().split('T')[0]);
+      setDataFim(hojeFormatado);
+      return;
+    }
+
+    if (atalho === 'ano') {
+      const inicioAno = new Date(hoje.getFullYear(), 0, 1);
+      setDataInicio(inicioAno.toISOString().split('T')[0]);
+      setDataFim(hojeFormatado);
+      return;
+    }
+  };
+
+  const limparFiltros = () => {
+    setBusca('');
+    setTipoFiltro('TODOS');
+    setStatusFiltro('TODOS');
+    setDataInicio('');
+    setDataFim('');
+    setAtalhoAtivo('todos');
+    setPaginaAtual(1);
+  };
+
+  // Filtragem combinada
+  const restricoesFiltradas = useMemo(() => {
+    const termoBusca = busca.trim().toLowerCase();
+    const digitosBusca = busca.replace(/\D/g, '');
+
+    return restricoes.filter((r) => {
+      const cliente = mapaClientes.get(r.clienteId);
+      const documentoCliente = cliente?.documento || '';
+      const documentoDigitos = documentoCliente.replace(/\D/g, '');
+
+      const matchNome = (r.clienteNome || '').toLowerCase().includes(termoBusca);
+      const matchTipo = r.tipoCodigo.toLowerCase().includes(termoBusca);
+      const matchDocumento =
+        (documentoCliente && documentoCliente.toLowerCase().includes(termoBusca)) ||
+        (digitosBusca.length > 0 && documentoDigitos.includes(digitosBusca));
+
+      const atendeBusca = !termoBusca || matchNome || matchTipo || matchDocumento;
+      const atendeTipo = tipoFiltro === 'TODOS' || r.tipoCodigo === tipoFiltro;
+      const atendeStatus = statusFiltro === 'TODOS' || r.status === statusFiltro;
+
+      let atendeData = true;
+      if (dataInicio && r.dataOcorrencia < dataInicio) atendeData = false;
+      if (dataFim && r.dataOcorrencia > dataFim) atendeData = false;
+
+      return atendeBusca && atendeTipo && atendeStatus && atendeData;
+    });
+  }, [restricoes, mapaClientes, busca, tipoFiltro, statusFiltro, dataInicio, dataFim]);
+
+  // Ordenação dinâmica
+  const restricoesOrdenadas = useMemo(() => {
+    return [...restricoesFiltradas].sort((a, b) => {
+      let valorA: any = a[campoOrdenacao];
+      let valorB: any = b[campoOrdenacao];
+
+      if (campoOrdenacao === 'valor') {
+        valorA = a.valor || 0;
+        valorB = b.valor || 0;
+      } else {
+        valorA = (valorA || '').toString().toLowerCase();
+        valorB = (valorB || '').toString().toLowerCase();
+      }
+
+      if (valorA < valorB) return ordemAsc ? -1 : 1;
+      if (valorA > valorB) return ordemAsc ? 1 : -1;
+      return 0;
+    });
+  }, [restricoesFiltradas, campoOrdenacao, ordemAsc]);
+
+  // Paginação
+  const totalPaginas = Math.ceil(restricoesOrdenadas.length / itensPorPagina) || 1;
+  const restricoesPaginadas = useMemo(() => {
+    const inicio = (paginaAtual - 1) * itensPorPagina;
+    return restricoesOrdenadas.slice(inicio, inicio + itensPorPagina);
+  }, [restricoesOrdenadas, paginaAtual]);
+
+  const alternarOrdenacao = (campo: CampoOrdenacao) => {
+    if (campoOrdenacao === campo) {
+      setOrdemAsc(!ordemAsc);
+    } else {
+      setCampoOrdenacao(campo);
+      setOrdemAsc(true);
+    }
+    setPaginaAtual(1);
+  };
+
+  // Métricas
+  const totalFiltradas = restricoesFiltradas.length;
+  const ativasFiltradas = restricoesFiltradas.filter((r) => r.status === 'ATIVA');
+  const baixadasFiltradas = restricoesFiltradas.filter((r) => r.status === 'BAIXADA');
+
+  const volumeInadimplenciaAtiva = ativasFiltradas
     .filter((r) => r.tipoCodigo === 'INADIMPLENCIA')
     .reduce((acc, r) => acc + (r.valor || 0), 0);
 
-  const totalFraudesAtivas = restricoesAtivas.filter((r) => r.tipoCodigo === 'FRAUDE').length;
-  const totalJudiciaisAtivas = restricoesAtivas.filter((r) => r.tipoCodigo === 'BLOQUEIO_JUDICIAL').length;
-  const totalInadimplenciasAtivas = restricoesAtivas.filter((r) => r.tipoCodigo === 'INADIMPLENCIA').length;
+  const totalFraudesAtivas = ativasFiltradas.filter((r) => r.tipoCodigo === 'FRAUDE').length;
+  const totalJudiciaisAtivas = ativasFiltradas.filter((r) => r.tipoCodigo === 'BLOQUEIO_JUDICIAL').length;
+  const totalInadimplenciasAtivas = ativasFiltradas.filter((r) => r.tipoCodigo === 'INADIMPLENCIA').length;
 
-  const taxaRegularizacao = totalRestricoes > 0
-    ? ((restricoesBaixadas.length / totalRestricoes) * 100).toFixed(1)
+  const taxaRegularizacao = totalFiltradas > 0
+    ? ((baixadasFiltradas.length / totalFiltradas) * 100).toFixed(1)
     : '0.0';
+
+  const valorTotalTabela = restricoesFiltradas.reduce((acc, r) => acc + (r.valor || 0), 0);
 
   const formatarMoeda = (valor: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
 
+  // Exportação para CSV
+  const exportarCSV = () => {
+    const cabecalho = ['Cliente', 'Documento/CPF', 'Tipo', 'Valor (R$)', 'Data Ocorrencia', 'Status'];
+    const linhas = restricoesFiltradas.map((r) => {
+      const doc = mapaClientes.get(r.clienteId)?.documento || '';
+      return [
+        `"${r.clienteNome || 'Cliente'}"`,
+        `"${doc}"`,
+        `"${r.tipoCodigo}"`,
+        (r.valor || 0).toFixed(2),
+        `"${r.dataOcorrencia}"`,
+        `"${r.status}"`,
+      ];
+    });
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [cabecalho.join(';'), ...linhas.map((e) => e.join(';'))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `relatorio_restricoes_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Impressão limpa via Janela Dedicada (sem conflitos de tags ou crases aninhadas)
+  const imprimirRelatorioCompleto = () => {
+    const dataHoraEmissao = new Date().toLocaleString('pt-BR');
+    const periodoTexto = (dataInicio || dataFim)
+      ? `${dataInicio || 'Início'} até ${dataFim || 'Hoje'}`
+      : 'Todo o Histórico';
+
+    const linhasHtml = restricoesFiltradas.map((r) => {
+      const doc = mapaClientes.get(r.clienteId)?.documento || '-';
+      const valorBRL = formatarMoeda(r.valor || 0);
+      const statusColor = r.status === 'ATIVA' ? '#b45309' : '#047857';
+
+      return `
+        <tr>
+          <td><strong>${r.clienteNome || 'Cliente'}</strong></td>
+          <td>${doc}</td>
+          <td>${r.tipoCodigo}</td>
+          <td style="text-align: right; font-weight: bold;">${valorBRL}</td>
+          <td style="text-align: center;">${r.dataOcorrencia}</td>
+          <td style="text-align: center; font-weight: bold; color: ${statusColor};">${r.status}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Por favor, permita pop-ups para imprimir o relatório.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Relatório Executivo de Risco - Banco Tech</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 12px; font-size: 11px; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 14px; }
+          .header h1 { font-size: 18px; margin: 0; color: #1e293b; }
+          .header p { margin: 2px 0 0; color: #64748b; font-size: 10px; }
+          .kpis { display: flex; gap: 8px; margin-bottom: 14px; }
+          .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; }
+          .kpi-title { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: bold; }
+          .kpi-value { font-size: 15px; font-weight: bold; margin-top: 3px; }
+          .filtros { font-size: 10px; background: #f1f5f9; padding: 6px 10px; border-radius: 4px; margin-bottom: 14px; color: #475569; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid #cbd5e1; font-size: 9px; text-transform: uppercase; }
+          td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+          tr:nth-child(even) td { background-color: #f8fafc; }
+          .tfoot td { font-weight: bold; background: #f1f5f9; border-top: 2px solid #cbd5e1; font-size: 11px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1>BANCO TECH • RISK & COMPLIANCE</h1>
+            <p>Relatório Analítico de Apontamentos e Restrições de Crédito</p>
+          </div>
+          <div style="text-align: right; font-size: 10px; color: #64748b;">
+            Emissão: ${dataHoraEmissao}<br />
+            Total: ${restricoesFiltradas.length} registros
+          </div>
+        </div>
+
+        <div class="filtros">
+          <strong>Filtros:</strong> Período: ${periodoTexto} | Tipo: ${tipoFiltro} | Status: ${statusFiltro} | Busca: ${busca || 'Nenhuma'}
+        </div>
+
+        <div class="kpis">
+          <div class="kpi-box">
+            <div class="kpi-title">Exposição Ativa</div>
+            <div class="kpi-value">${formatarMoeda(volumeInadimplenciaAtiva)}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Ocorrências Críticas</div>
+            <div class="kpi-value" style="color: #b91c1c;">${totalFraudesAtivas + totalJudiciaisAtivas}</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Taxa Regularização</div>
+            <div class="kpi-value" style="color: #047857;">${taxaRegularizacao}%</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Total Filtrado</div>
+            <div class="kpi-value" style="color: #1d4ed8;">${formatarMoeda(valorTotalTabela)}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Documento</th>
+              <th>Tipo</th>
+              <th style="text-align: right;">Valor</th>
+              <th style="text-align: center;">Ocorrência</th>
+              <th style="text-align: center;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhasHtml || '<tr><td colspan="6" style="text-align: center; padding: 20px;">Nenhum registro encontrado.</td></tr>'}
+          </tbody>
+          <tfoot>
+            <tr class="tfoot">
+              <td colspan="3">TOTAL GERAL FILTRADO</td>
+              <td style="text-align: right; color: #1d4ed8;">${formatarMoeda(valorTotalTabela)}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
   return (
     <div className="space-y-6">
-      {/* HEADER DA PÁGINA */}
+      {/* CABEÇALHO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Relatórios & Visão de Risco</h2>
-          <p className="text-sm text-slate-500">Métricas analíticas e consolidação das restrições financeiras ativas.</p>
+          <h2 className="text-xl font-bold text-slate-800">Relatórios & Inteligência de Risco</h2>
+          <p className="text-sm text-slate-500">
+            Painel analítico e auditoria de conformidade financeira das operações.
+          </p>
         </div>
-        <button
-          onClick={carregarDados}
-          className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-lg transition-colors flex items-center gap-2 self-start sm:self-auto shadow-xs"
-        >
-          <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Atualizar Dados
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={carregarDados}
+            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+            title="Recarregar dados"
+          >
+            <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Atualizar
+          </button>
+          <button
+            onClick={exportarCSV}
+            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+          >
+            <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Exportar CSV
+          </button>
+          <button
+            onClick={imprimirRelatorioCompleto}
+            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Imprimir / PDF
+          </button>
+        </div>
       </div>
 
+      {/* 1. SEÇÃO DE FILTROS E BUSCA AVANÇADA */}
+      <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+        {/* ATALHOS RÁPIDOS DE DATA */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="font-semibold text-slate-500 uppercase mr-1">Período:</span>
+            {[
+              { id: 'todos', label: 'Todo o Histórico' },
+              { id: 'hoje', label: 'Hoje' },
+              { id: '7dias', label: 'Últimos 7 dias' },
+              { id: 'mes', label: 'Este Mês' },
+              { id: 'ano', label: 'Este Ano' },
+            ].map((btn) => (
+              <button
+                key={btn.id}
+                onClick={() => aplicarAtalhoPeriodo(btn.id as any)}
+                className={`px-2.5 py-1 rounded-md transition-colors font-medium ${
+                  atalhoAtivo === btn.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={limparFiltros}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+          >
+            Limpar Todos os Filtros
+          </button>
+        </div>
+
+        {/* INPUTS DE FILTRAGEM */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="lg:col-span-2">
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Busca Global</label>
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => {
+                setBusca(e.target.value);
+                setPaginaAtual(1);
+              }}
+              placeholder="Pesquisar por cliente, CPF ou tipo..."
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Classificação</label>
+            <select
+              value={tipoFiltro}
+              onChange={(e) => {
+                setTipoFiltro(e.target.value);
+                setPaginaAtual(1);
+              }}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            >
+              <option value="TODOS">Todos os Tipos</option>
+              <option value="FRAUDE">Fraude</option>
+              <option value="INADIMPLENCIA">Inadimplência</option>
+              <option value="BLOQUEIO_JUDICIAL">Bloqueio Judicial</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Status Operacional</label>
+            <select
+              value={statusFiltro}
+              onChange={(e) => {
+                setStatusFiltro(e.target.value);
+                setPaginaAtual(1);
+              }}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            >
+              <option value="TODOS">Todos os Status</option>
+              <option value="ATIVA">Ativa</option>
+              <option value="BAIXADA">Baixada (Regularizada)</option>
+            </select>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Início</label>
+              <input
+                type="date"
+                value={dataInicio}
+                onChange={(e) => {
+                  setDataInicio(e.target.value);
+                  setAtalhoAtivo('');
+                  setPaginaAtual(1);
+                }}
+                className="w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Fim</label>
+              <input
+                type="date"
+                value={dataFim}
+                onChange={(e) => {
+                  setDataFim(e.target.value);
+                  setAtalhoAtivo('');
+                  setPaginaAtual(1);
+                }}
+                className="w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {carregando ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-400">
-          Carregando indicadores analíticos...
+        <div className="bg-white border border-slate-200 rounded-xl p-16 text-center text-slate-400">
+          <div className="inline-block w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p className="text-sm font-medium">A processar dados analíticos...</p>
         </div>
       ) : (
         <>
-          {/* CARDS DE INDICADORES (KPIS) */}
+          {/* 2. INDICADORES RESUMIDOS / KPIS REATIVOS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Exposição Financeira</span>
               <p className="text-2xl font-bold text-slate-900 mt-2">{formatarMoeda(volumeInadimplenciaAtiva)}</p>
               <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block mt-2">
-                Inadimplências ativas
+                Inadimplências ativas no filtro
               </span>
             </div>
 
@@ -86,7 +515,7 @@ export const RelatoriosPage: React.FC = () => {
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Ocorrências Críticas</span>
               <p className="text-2xl font-bold text-red-700 mt-2">{totalFraudesAtivas + totalJudiciaisAtivas}</p>
               <p className="text-xs text-slate-500 mt-2">
-                {totalFraudesAtivas} fraudes e {totalJudiciaisAtivas} judiciais ativas
+                {totalFraudesAtivas} fraudes e {totalJudiciaisAtivas} ordens judiciais
               </p>
             </div>
 
@@ -94,22 +523,24 @@ export const RelatoriosPage: React.FC = () => {
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Taxa de Regularização</span>
               <p className="text-2xl font-bold text-emerald-700 mt-2">{taxaRegularizacao}%</p>
               <p className="text-xs text-slate-500 mt-2">
-                {restricoesBaixadas.length} de {totalRestricoes} resolvidas
+                {baixadasFiltradas.length} de {totalFiltradas} ocorrências baixadas
               </p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Base de Clientes</span>
-              <p className="text-2xl font-bold text-slate-900 mt-2">{clientes.length}</p>
-              <p className="text-xs text-slate-500 mt-2">Clientes monitorados</p>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Amostra Filtrada</span>
+              <p className="text-2xl font-bold text-slate-900 mt-2">{totalFiltradas}</p>
+              <p className="text-xs text-slate-500 mt-2">
+                Total de {clientes.length} clientes cadastrados
+              </p>
             </div>
           </div>
 
-          {/* DISTRIBUIÇÃO E GRÁFICO VISUAL DE BARRAS */}
+          {/* 3. VISUALIZAÇÃO GRÁFICA / BARRAS DE PROPORÇÃO */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
               <h3 className="text-base font-semibold text-slate-800 mb-1">Distribuição de Restrições Ativas</h3>
-              <p className="text-xs text-slate-500 mb-6">Contagem de registros vigentes por classificação de risco.</p>
+              <p className="text-xs text-slate-500 mb-6">Contagem de registos vigentes por classificação de risco no recorte atual.</p>
 
               <div className="space-y-4 text-sm">
                 <div>
@@ -123,7 +554,7 @@ export const RelatoriosPage: React.FC = () => {
                     <div
                       className="bg-amber-500 h-2.5 rounded-full transition-all"
                       style={{
-                        width: `${restricoesAtivas.length > 0 ? (totalInadimplenciasAtivas / restricoesAtivas.length) * 100 : 0}%`,
+                        width: `${ativasFiltradas.length > 0 ? (totalInadimplenciasAtivas / ativasFiltradas.length) * 100 : 0}%`,
                       }}
                     ></div>
                   </div>
@@ -140,7 +571,7 @@ export const RelatoriosPage: React.FC = () => {
                     <div
                       className="bg-red-500 h-2.5 rounded-full transition-all"
                       style={{
-                        width: `${restricoesAtivas.length > 0 ? (totalFraudesAtivas / restricoesAtivas.length) * 100 : 0}%`,
+                        width: `${ativasFiltradas.length > 0 ? (totalFraudesAtivas / ativasFiltradas.length) * 100 : 0}%`,
                       }}
                     ></div>
                   </div>
@@ -157,7 +588,7 @@ export const RelatoriosPage: React.FC = () => {
                     <div
                       className="bg-purple-500 h-2.5 rounded-full transition-all"
                       style={{
-                        width: `${restricoesAtivas.length > 0 ? (totalJudiciaisAtivas / restricoesAtivas.length) * 100 : 0}%`,
+                        width: `${ativasFiltradas.length > 0 ? (totalJudiciaisAtivas / ativasFiltradas.length) * 100 : 0}%`,
                       }}
                     ></div>
                   </div>
@@ -167,89 +598,193 @@ export const RelatoriosPage: React.FC = () => {
 
             <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between">
               <div>
-                <h3 className="text-base font-semibold text-slate-800 mb-1">Resumo de Conformidade Operacional</h3>
-                <p className="text-xs text-slate-500 mb-4">Critérios das regras de negócio do motor ativo.</p>
-                
+                <h3 className="text-base font-semibold text-slate-800 mb-1">Parâmetros das Regras de Negócio</h3>
+                <p className="text-xs text-slate-500 mb-4">Critérios normativos avaliados pelo motor de decisão em cada transação.</p>
+
                 <ul className="space-y-3 text-xs text-slate-600">
                   <li className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <strong className="text-slate-800 block text-sm mb-0.5">Regra de Fraude</strong>
-                    Bloqueio instantâneo e irrestrito para qualquer transação vinculada a clientes com fraudes ativas.
+                    <strong className="text-slate-800 block text-sm mb-0.5">Política de Fraude & Bloqueio Judicial</strong>
+                    Bloqueio imediato para qualquer proposta caso haja apontamento ativo registrado no CPF/CNPJ.
                   </li>
                   <li className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <strong className="text-slate-800 block text-sm mb-0.5">Regra de Inadimplência</strong>
-                    Bloqueio automático se o montante acumulado for superior a R$ 5.000,00 ou se o atraso ultrapassar 90 dias.
+                    <strong className="text-slate-800 block text-sm mb-0.5">Teto Financeiro e Temporal de Inadimplência</strong>
+                    Bloqueio automático se o montante acumulado for superior a R$ 5.000,00 ou se o atraso exceder 90 dias.
                   </li>
                 </ul>
               </div>
 
               <div className="mt-4 pt-4 border-t border-slate-200 text-xs text-slate-400 flex justify-between items-center">
-                <span>Motor v1.0 • Spring Boot Data Engine</span>
-                <span className="text-emerald-600 font-semibold">Regras Homologadas</span>
+                <span>Motor v1.0 • Validação Transacional</span>
+                <span className="text-emerald-600 font-semibold">Engine Homologada</span>
               </div>
             </section>
           </div>
 
-          {/* TABELA DE OCORRÊNCIAS MAIS RECENTES */}
+          {/* 4. TABELA DETALHADA COM ORDENAÇÃO, PAGINAÇÃO E TOTALIZADOR */}
           <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-base font-semibold text-slate-800">Últimas Ocorrências Registradas no Sistema</h3>
-              <p className="text-sm text-slate-500">Monitoramento em lote de todos os clientes.</p>
+            <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Registos Detalhados da Auditoria</h3>
+                <p className="text-sm text-slate-500">
+                  A exibir {restricoesPaginadas.length} de {restricoesFiltradas.length} apontamentos filtrados.
+                </p>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-600">
                 <thead className="bg-slate-50 border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wider font-semibold">
                   <tr>
-                    <th className="px-6 py-3.5">Cliente</th>
-                    <th className="px-6 py-3.5">Tipo</th>
-                    <th className="px-6 py-3.5">Valor</th>
-                    <th className="px-6 py-3.5">Data Ocorrência</th>
-                    <th className="px-6 py-3.5">Status</th>
+                    <th
+                      onClick={() => alternarOrdenacao('clienteNome')}
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Cliente
+                        {campoOrdenacao === 'clienteNome' && (ordemAsc ? ' ▲' : ' ▼')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => alternarOrdenacao('tipoCodigo')}
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Tipo
+                        {campoOrdenacao === 'tipoCodigo' && (ordemAsc ? ' ▲' : ' ▼')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => alternarOrdenacao('valor')}
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Valor
+                        {campoOrdenacao === 'valor' && (ordemAsc ? ' ▲' : ' ▼')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => alternarOrdenacao('dataOcorrencia')}
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Data Ocorrência
+                        {campoOrdenacao === 'dataOcorrencia' && (ordemAsc ? ' ▲' : ' ▼')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => alternarOrdenacao('status')}
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                    >
+                      <div className="flex items-center gap-1">
+                        Status
+                        {campoOrdenacao === 'status' && (ordemAsc ? ' ▲' : ' ▼')}
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {restricoes.length === 0 ? (
+                  {restricoesPaginadas.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
-                        Nenhuma restrição registrada no sistema.
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                        <p className="text-base font-semibold text-slate-600">Nenhum registo encontrado</p>
+                        <p className="text-xs text-slate-400 mt-1">Tente ajustar o intervalo de datas ou o termo pesquisado.</p>
+                        <button
+                          onClick={limparFiltros}
+                          className="mt-3 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors"
+                        >
+                          Redefinir Filtros
+                        </button>
                       </td>
                     </tr>
                   ) : (
-                    restricoes.slice(0, 5).map((r) => (
-                      <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-slate-800">{r.clienteNome || 'Cliente'}</td>
-                        <td className="px-6 py-4 font-semibold">
-                          <span
-                            className={`inline-block px-2 py-0.5 text-xs rounded border ${
-                              r.tipoCodigo === 'FRAUDE'
-                                ? 'bg-red-50 text-red-700 border-red-200'
-                                : r.tipoCodigo === 'BLOQUEIO_JUDICIAL'
-                                ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}
-                          >
-                            {r.tipoCodigo}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-slate-900 font-medium">{formatarMoeda(r.valor || 0)}</td>
-                        <td className="px-6 py-4 text-slate-500">{r.dataOcorrencia}</td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`px-2 py-0.5 text-xs font-semibold rounded ${
-                              r.status === 'ATIVA'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {r.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    restricoesPaginadas.map((r) => {
+                      const doc = mapaClientes.get(r.clienteId)?.documento;
+
+                      return (
+                        <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-slate-800">
+                            {r.clienteNome || 'Cliente'}
+                            {doc && (
+                              <span className="block text-xs font-normal text-slate-400">
+                                CPF: {doc}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 font-semibold">
+                            <span
+                              className={`inline-block px-2 py-0.5 text-xs rounded border ${
+                                r.tipoCodigo === 'FRAUDE'
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : r.tipoCodigo === 'BLOQUEIO_JUDICIAL'
+                                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}
+                            >
+                              {r.tipoCodigo}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-900 font-medium">{formatarMoeda(r.valor || 0)}</td>
+                          <td className="px-6 py-4 text-slate-500">{r.dataOcorrencia}</td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                                r.status === 'ATIVA'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {r.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
+
+                {/* LINHA DE TOTALIZADORES NO RODAPÉ */}
+                {restricoesFiltradas.length > 0 && (
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-semibold text-slate-800 text-xs">
+                    <tr>
+                      <td className="px-6 py-3.5 uppercase tracking-wider text-slate-500">
+                        Total Filtrado ({restricoesFiltradas.length} itens)
+                      </td>
+                      <td className="px-6 py-3.5"></td>
+                      <td className="px-6 py-3.5 text-blue-700 font-bold text-sm">
+                        {formatarMoeda(valorTotalTabela)}
+                      </td>
+                      <td className="px-6 py-3.5" colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
+
+            {/* CONTROLO DE PAGINAÇÃO */}
+            {totalPaginas > 1 && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs text-slate-500">
+                  Página <strong className="text-slate-700">{paginaAtual}</strong> de{' '}
+                  <strong className="text-slate-700">{totalPaginas}</strong>
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    disabled={paginaAtual === 1}
+                    onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
+                    className="px-3 py-1 bg-white border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    disabled={paginaAtual === totalPaginas}
+                    onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
+                    className="px-3 py-1 bg-white border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Seguinte
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         </>
       )}
