@@ -210,13 +210,13 @@ export const RelatoriosPage: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `relatorio_restricoes_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `relatorio_banestes_restricoes_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Impressão limpa via Janela Dedicada (sem conflitos de tags ou crases aninhadas)
+  // Impressão Institucional Banestes (PDF A4)
   const imprimirRelatorioCompleto = () => {
     const dataHoraEmissao = new Date().toLocaleString('pt-BR');
     const periodoTexto = (dataInicio || dataFim)
@@ -226,12 +226,12 @@ export const RelatoriosPage: React.FC = () => {
     const linhasHtml = restricoesFiltradas.map((r) => {
       const doc = mapaClientes.get(r.clienteId)?.documento || '-';
       const valorBRL = formatarMoeda(r.valor || 0);
-      const statusColor = r.status === 'ATIVA' ? '#b45309' : '#047857';
+      const statusColor = r.status === 'ATIVA' ? '#b45309' : '#00874c';
 
       return `
         <tr>
           <td><strong>${r.clienteNome || 'Cliente'}</strong></td>
-          <td>${doc}</td>
+          <td style="font-family: monospace;">${doc}</td>
           <td>${r.tipoCodigo}</td>
           <td style="text-align: right; font-weight: bold;">${valorBRL}</td>
           <td style="text-align: center;">${r.dataOcorrencia}</td>
@@ -251,29 +251,29 @@ export const RelatoriosPage: React.FC = () => {
       <html lang="pt-BR">
       <head>
         <meta charset="UTF-8" />
-        <title>Relatório Executivo de Risco - Banco Tech</title>
+        <title>Relatório Executivo de Risco - Banestes</title>
         <style>
           @page { size: A4 portrait; margin: 12mm; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 12px; font-size: 11px; }
-          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 14px; }
-          .header h1 { font-size: 18px; margin: 0; color: #1e293b; }
+          body { font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #081c30; margin: 0; padding: 12px; font-size: 11px; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2.5px solid #004b87; padding-bottom: 8px; margin-bottom: 14px; }
+          .header h1 { font-family: 'Poppins', sans-serif; font-size: 18px; margin: 0; color: #002855; font-weight: 700; letter-spacing: -0.5px; }
           .header p { margin: 2px 0 0; color: #64748b; font-size: 10px; }
           .kpis { display: flex; gap: 8px; margin-bottom: 14px; }
           .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; }
-          .kpi-title { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: bold; }
-          .kpi-value { font-size: 15px; font-weight: bold; margin-top: 3px; }
-          .filtros { font-size: 10px; background: #f1f5f9; padding: 6px 10px; border-radius: 4px; margin-bottom: 14px; color: #475569; }
+          .kpi-title { font-family: 'Poppins', sans-serif; font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: bold; }
+          .kpi-value { font-family: 'Poppins', sans-serif; font-size: 15px; font-weight: bold; margin-top: 3px; color: #081c30; }
+          .filtros { font-size: 10px; background: #e8f3fa; padding: 6px 10px; border-radius: 4px; margin-bottom: 14px; color: #002855; border: 1px solid #cbd5e1; }
           table { width: 100%; border-collapse: collapse; font-size: 10px; }
-          th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid #cbd5e1; font-size: 9px; text-transform: uppercase; }
+          th { font-family: 'Poppins', sans-serif; background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid #cbd5e1; font-size: 9px; text-transform: uppercase; color: #002855; }
           td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
           tr:nth-child(even) td { background-color: #f8fafc; }
-          .tfoot td { font-weight: bold; background: #f1f5f9; border-top: 2px solid #cbd5e1; font-size: 11px; }
+          .tfoot td { font-family: 'Poppins', sans-serif; font-weight: bold; background: #e8f3fa; border-top: 2px solid #004b87; font-size: 11px; color: #002855; }
         </style>
       </head>
       <body>
         <div class="header">
           <div>
-            <h1>BANCO TECH • RISK & COMPLIANCE</h1>
+            <h1>BANESTES • RISK & COMPLIANCE</h1>
             <p>Relatório Analítico de Apontamentos e Restrições de Crédito</p>
           </div>
           <div style="text-align: right; font-size: 10px; color: #64748b;">
@@ -283,7 +283,7 @@ export const RelatoriosPage: React.FC = () => {
         </div>
 
         <div class="filtros">
-          <strong>Filtros:</strong> Período: ${periodoTexto} | Tipo: ${tipoFiltro} | Status: ${statusFiltro} | Busca: ${busca || 'Nenhuma'}
+          <strong>Filtros Aplicados:</strong> Período: ${periodoTexto} | Classificação: ${tipoFiltro} | Status: ${statusFiltro} | Busca: ${busca || 'Nenhuma'}
         </div>
 
         <div class="kpis">
@@ -297,11 +297,11 @@ export const RelatoriosPage: React.FC = () => {
           </div>
           <div class="kpi-box">
             <div class="kpi-title">Taxa Regularização</div>
-            <div class="kpi-value" style="color: #047857;">${taxaRegularizacao}%</div>
+            <div class="kpi-value" style="color: #00874c;">${taxaRegularizacao}%</div>
           </div>
           <div class="kpi-box">
             <div class="kpi-title">Total Filtrado</div>
-            <div class="kpi-value" style="color: #1d4ed8;">${formatarMoeda(valorTotalTabela)}</div>
+            <div class="kpi-value" style="color: #004b87;">${formatarMoeda(valorTotalTabela)}</div>
           </div>
         </div>
 
@@ -310,7 +310,7 @@ export const RelatoriosPage: React.FC = () => {
             <tr>
               <th>Cliente</th>
               <th>Documento</th>
-              <th>Tipo</th>
+              <th>Classificação</th>
               <th style="text-align: right;">Valor</th>
               <th style="text-align: center;">Ocorrência</th>
               <th style="text-align: center;">Status</th>
@@ -321,8 +321,8 @@ export const RelatoriosPage: React.FC = () => {
           </tbody>
           <tfoot>
             <tr class="tfoot">
-              <td colspan="3">TOTAL GERAL FILTRADO</td>
-              <td style="text-align: right; color: #1d4ed8;">${formatarMoeda(valorTotalTabela)}</td>
+              <td colspan="3">TOTAL GERAL FILTRADO (${restricoesFiltradas.length} itens)</td>
+              <td style="text-align: right; color: #004b87;">${formatarMoeda(valorTotalTabela)}</td>
               <td colspan="2"></td>
             </tr>
           </tfoot>
@@ -339,11 +339,11 @@ export const RelatoriosPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       {/* CABEÇALHO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Relatórios & Inteligência de Risco</h2>
+        <div className="text-left">
+          <h2 className="font-poppins text-xl font-bold text-slate-800 tracking-tight">Relatórios & Inteligência de Risco</h2>
           <p className="text-sm text-slate-500">
             Painel analítico e auditoria de conformidade financeira das operações.
           </p>
@@ -351,7 +351,7 @@ export const RelatoriosPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
             onClick={carregarDados}
-            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs font-sans"
             title="Recarregar dados"
           >
             <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -361,18 +361,18 @@ export const RelatoriosPage: React.FC = () => {
           </button>
           <button
             onClick={exportarCSV}
-            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs font-sans"
           >
-            <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5 text-[#00874c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             Exportar CSV
           </button>
           <button
             onClick={imprimirRelatorioCompleto}
-            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+            className="px-3 py-2 bg-[#081c30] hover:bg-[#002855] text-white font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs font-poppins"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5 text-[#009ee3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
             Imprimir / PDF
@@ -381,11 +381,11 @@ export const RelatoriosPage: React.FC = () => {
       </div>
 
       {/* 1. SEÇÃO DE FILTROS E BUSCA AVANÇADA */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+      <section className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs space-y-4 text-left">
         {/* ATALHOS RÁPIDOS DE DATA */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="font-semibold text-slate-500 uppercase mr-1">Período:</span>
+            <span className="font-poppins font-semibold text-slate-500 uppercase mr-1 text-[11px]">Período:</span>
             {[
               { id: 'todos', label: 'Todo o Histórico' },
               { id: 'hoje', label: 'Hoje' },
@@ -398,7 +398,7 @@ export const RelatoriosPage: React.FC = () => {
                 onClick={() => aplicarAtalhoPeriodo(btn.id as any)}
                 className={`px-2.5 py-1 rounded-md transition-colors font-medium ${
                   atalhoAtivo === btn.id
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-[#004b87] text-white shadow-2xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -408,16 +408,18 @@ export const RelatoriosPage: React.FC = () => {
           </div>
           <button
             onClick={limparFiltros}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+            className="text-xs text-[#004b87] hover:text-[#003a6b] font-medium transition-colors"
           >
             Limpar Todos os Filtros
           </button>
         </div>
 
-        {/* INPUTS DE FILTRAGEM */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="lg:col-span-2">
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Busca Global</label>
+        {/* INPUTS DE FILTRAGEM (6 Colunas com min-w-0 para proteção de estouro) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="sm:col-span-2 lg:col-span-2">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Busca Global
+            </label>
             <input
               type="text"
               value={busca}
@@ -426,19 +428,21 @@ export const RelatoriosPage: React.FC = () => {
                 setPaginaAtual(1);
               }}
               placeholder="Pesquisar por cliente, CPF ou tipo..."
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Classificação</label>
+          <div className="min-w-0">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Classificação
+            </label>
             <select
               value={tipoFiltro}
               onChange={(e) => {
                 setTipoFiltro(e.target.value);
                 setPaginaAtual(1);
               }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
             >
               <option value="TODOS">Todos os Tipos</option>
               <option value="FRAUDE">Fraude</option>
@@ -447,15 +451,17 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Status Operacional</label>
+          <div className="min-w-0">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Status Operacional
+            </label>
             <select
               value={statusFiltro}
               onChange={(e) => {
                 setStatusFiltro(e.target.value);
                 setPaginaAtual(1);
               }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
             >
               <option value="TODOS">Todos os Status</option>
               <option value="ATIVA">Ativa</option>
@@ -463,73 +469,84 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Início</label>
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => {
-                  setDataInicio(e.target.value);
-                  setAtalhoAtivo('');
-                  setPaginaAtual(1);
-                }}
-                className="w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Fim</label>
-              <input
-                type="date"
-                value={dataFim}
-                onChange={(e) => {
-                  setDataFim(e.target.value);
-                  setAtalhoAtivo('');
-                  setPaginaAtual(1);
-                }}
-                className="w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+          <div className="min-w-0">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Início
+            </label>
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => {
+                setDataInicio(e.target.value);
+                setAtalhoAtivo('');
+                setPaginaAtual(1);
+              }}
+              className="w-full min-w-0 px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+            />
+          </div>
+
+          <div className="min-w-0">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Fim
+            </label>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => {
+                setDataFim(e.target.value);
+                setAtalhoAtivo('');
+                setPaginaAtual(1);
+              }}
+              className="w-full min-w-0 px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+            />
           </div>
         </div>
       </section>
 
       {carregando ? (
         <div className="bg-white border border-slate-200 rounded-xl p-16 text-center text-slate-400">
-          <div className="inline-block w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-          <p className="text-sm font-medium">A processar dados analíticos...</p>
+          <div className="inline-block w-8 h-8 border-3 border-[#004b87] border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p className="text-sm font-medium">A processar dados analíticos do Banestes...</p>
         </div>
       ) : (
         <>
           {/* 2. INDICADORES RESUMIDOS / KPIS REATIVOS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Exposição Financeira</span>
-              <p className="text-2xl font-bold text-slate-900 mt-2">{formatarMoeda(volumeInadimplenciaAtiva)}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 text-left">
+            <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
+              <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+                Exposição Financeira
+              </span>
+              <p className="font-poppins text-2xl font-bold text-[#081c30] mt-2">{formatarMoeda(volumeInadimplenciaAtiva)}</p>
               <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block mt-2">
                 Inadimplências ativas no filtro
               </span>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Ocorrências Críticas</span>
-              <p className="text-2xl font-bold text-red-700 mt-2">{totalFraudesAtivas + totalJudiciaisAtivas}</p>
+            <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
+              <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+                Ocorrências Críticas
+              </span>
+              <p className="font-poppins text-2xl font-bold text-red-700 mt-2">{totalFraudesAtivas + totalJudiciaisAtivas}</p>
               <p className="text-xs text-slate-500 mt-2">
                 {totalFraudesAtivas} fraudes e {totalJudiciaisAtivas} ordens judiciais
               </p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Taxa de Regularização</span>
-              <p className="text-2xl font-bold text-emerald-700 mt-2">{taxaRegularizacao}%</p>
+            <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
+              <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+                Taxa de Regularização
+              </span>
+              <p className="font-poppins text-2xl font-bold text-[#00874c] mt-2">{taxaRegularizacao}%</p>
               <p className="text-xs text-slate-500 mt-2">
                 {baixadasFiltradas.length} de {totalFiltradas} ocorrências baixadas
               </p>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Amostra Filtrada</span>
-              <p className="text-2xl font-bold text-slate-900 mt-2">{totalFiltradas}</p>
+            <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
+              <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+                Amostra Filtrada
+              </span>
+              <p className="font-poppins text-2xl font-bold text-[#081c30] mt-2">{totalFiltradas}</p>
               <p className="text-xs text-slate-500 mt-2">
                 Total de {clientes.length} clientes cadastrados
               </p>
@@ -537,18 +554,18 @@ export const RelatoriosPage: React.FC = () => {
           </div>
 
           {/* 3. VISUALIZAÇÃO GRÁFICA / BARRAS DE PROPORÇÃO */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
-              <h3 className="text-base font-semibold text-slate-800 mb-1">Distribuição de Restrições Ativas</h3>
-              <p className="text-xs text-slate-500 mb-6">Contagem de registos vigentes por classificação de risco no recorte atual.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-left">
+            <section className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-xs">
+              <h3 className="font-poppins text-base font-bold text-slate-800 mb-1">Distribuição de Restrições Ativas</h3>
+              <p className="text-xs text-slate-500 mb-6">Contagem de registros vigentes por classificação de risco no recorte atual.</p>
 
               <div className="space-y-4 text-sm">
                 <div>
                   <div className="flex justify-between font-medium mb-1">
-                    <span className="text-slate-700 flex items-center gap-1.5">
+                    <span className="text-slate-700 flex items-center gap-1.5 font-poppins text-xs font-semibold">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Inadimplências
                     </span>
-                    <span className="text-slate-900 font-semibold">{totalInadimplenciasAtivas}</span>
+                    <span className="text-slate-900 font-semibold font-poppins">{totalInadimplenciasAtivas}</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2.5">
                     <div
@@ -562,10 +579,10 @@ export const RelatoriosPage: React.FC = () => {
 
                 <div>
                   <div className="flex justify-between font-medium mb-1">
-                    <span className="text-slate-700 flex items-center gap-1.5">
+                    <span className="text-slate-700 flex items-center gap-1.5 font-poppins text-xs font-semibold">
                       <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span> Fraudes
                     </span>
-                    <span className="text-slate-900 font-semibold">{totalFraudesAtivas}</span>
+                    <span className="text-slate-900 font-semibold font-poppins">{totalFraudesAtivas}</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2.5">
                     <div
@@ -579,10 +596,10 @@ export const RelatoriosPage: React.FC = () => {
 
                 <div>
                   <div className="flex justify-between font-medium mb-1">
-                    <span className="text-slate-700 flex items-center gap-1.5">
+                    <span className="text-slate-700 flex items-center gap-1.5 font-poppins text-xs font-semibold">
                       <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Bloqueios Judiciais
                     </span>
-                    <span className="text-slate-900 font-semibold">{totalJudiciaisAtivas}</span>
+                    <span className="text-slate-900 font-semibold font-poppins">{totalJudiciaisAtivas}</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2.5">
                     <div
@@ -596,18 +613,18 @@ export const RelatoriosPage: React.FC = () => {
               </div>
             </section>
 
-            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between">
+            <section className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-xs flex flex-col justify-between">
               <div>
-                <h3 className="text-base font-semibold text-slate-800 mb-1">Parâmetros das Regras de Negócio</h3>
-                <p className="text-xs text-slate-500 mb-4">Critérios normativos avaliados pelo motor de decisão em cada transação.</p>
+                <h3 className="font-poppins text-base font-bold text-slate-800 mb-1">Parâmetros das Regras de Negócio</h3>
+                <p className="text-xs text-slate-500 mb-4">Critérios normativos avaliados pelo motor de decisão do Banestes.</p>
 
                 <ul className="space-y-3 text-xs text-slate-600">
                   <li className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <strong className="text-slate-800 block text-sm mb-0.5">Política de Fraude & Bloqueio Judicial</strong>
-                    Bloqueio imediato para qualquer proposta caso haja apontamento ativo registrado no CPF/CNPJ.
+                    <strong className="text-[#081c30] font-poppins block text-sm mb-0.5">Política de Fraude & Bloqueio Judicial</strong>
+                    Bloqueio compulsório para qualquer proposta caso haja apontamento ativo registrado no CPF/CNPJ.
                   </li>
                   <li className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <strong className="text-slate-800 block text-sm mb-0.5">Teto Financeiro e Temporal de Inadimplência</strong>
+                    <strong className="text-[#081c30] font-poppins block text-sm mb-0.5">Teto Financeiro e Temporal de Inadimplência</strong>
                     Bloqueio automático se o montante acumulado for superior a R$ 5.000,00 ou se o atraso exceder 90 dias.
                   </li>
                 </ul>
@@ -615,16 +632,19 @@ export const RelatoriosPage: React.FC = () => {
 
               <div className="mt-4 pt-4 border-t border-slate-200 text-xs text-slate-400 flex justify-between items-center">
                 <span>Motor v1.0 • Validação Transacional</span>
-                <span className="text-emerald-600 font-semibold">Engine Homologada</span>
+                <span className="text-[#00874c] font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00874c]"></span>
+                  Engine Homologada
+                </span>
               </div>
             </section>
           </div>
 
           {/* 4. TABELA DETALHADA COM ORDENAÇÃO, PAGINAÇÃO E TOTALIZADOR */}
-          <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          <section className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden text-left">
             <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-semibold text-slate-800">Registos Detalhados da Auditoria</h3>
+                <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">Registros Detalhados da Auditoria</h3>
                 <p className="text-sm text-slate-500">
                   A exibir {restricoesPaginadas.length} de {restricoesFiltradas.length} apontamentos filtrados.
                 </p>
@@ -637,7 +657,7 @@ export const RelatoriosPage: React.FC = () => {
                   <tr>
                     <th
                       onClick={() => alternarOrdenacao('clienteNome')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
                     >
                       <div className="flex items-center gap-1">
                         Cliente
@@ -646,7 +666,7 @@ export const RelatoriosPage: React.FC = () => {
                     </th>
                     <th
                       onClick={() => alternarOrdenacao('tipoCodigo')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
                     >
                       <div className="flex items-center gap-1">
                         Tipo
@@ -655,7 +675,7 @@ export const RelatoriosPage: React.FC = () => {
                     </th>
                     <th
                       onClick={() => alternarOrdenacao('valor')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
                     >
                       <div className="flex items-center gap-1">
                         Valor
@@ -664,7 +684,7 @@ export const RelatoriosPage: React.FC = () => {
                     </th>
                     <th
                       onClick={() => alternarOrdenacao('dataOcorrencia')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
                     >
                       <div className="flex items-center gap-1">
                         Data Ocorrência
@@ -673,7 +693,7 @@ export const RelatoriosPage: React.FC = () => {
                     </th>
                     <th
                       onClick={() => alternarOrdenacao('status')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
                     >
                       <div className="flex items-center gap-1">
                         Status
@@ -686,11 +706,11 @@ export const RelatoriosPage: React.FC = () => {
                   {restricoesPaginadas.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                        <p className="text-base font-semibold text-slate-600">Nenhum registo encontrado</p>
+                        <p className="font-poppins text-base font-semibold text-slate-600">Nenhum registro encontrado</p>
                         <p className="text-xs text-slate-400 mt-1">Tente ajustar o intervalo de datas ou o termo pesquisado.</p>
                         <button
                           onClick={limparFiltros}
-                          className="mt-3 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors"
+                          className="mt-3 px-3 py-1.5 bg-[#e8f3fa] text-[#004b87] hover:bg-[#004b87] hover:text-white rounded-lg text-xs font-semibold transition-colors"
                         >
                           Redefinir Filtros
                         </button>
@@ -701,11 +721,11 @@ export const RelatoriosPage: React.FC = () => {
                       const doc = mapaClientes.get(r.clienteId)?.documento;
 
                       return (
-                        <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                        <tr key={r.id} className="hover:bg-[#e8f3fa]/20 transition-colors">
                           <td className="px-6 py-4 font-semibold text-slate-800">
                             {r.clienteNome || 'Cliente'}
                             {doc && (
-                              <span className="block text-xs font-normal text-slate-400">
+                              <span className="block text-xs font-normal text-slate-400 font-mono">
                                 CPF: {doc}
                               </span>
                             )}
@@ -727,10 +747,10 @@ export const RelatoriosPage: React.FC = () => {
                           <td className="px-6 py-4 text-slate-500">{r.dataOcorrencia}</td>
                           <td className="px-6 py-4">
                             <span
-                              className={`px-2 py-0.5 text-xs font-semibold rounded ${
+                              className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
                                 r.status === 'ATIVA'
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-emerald-100 text-emerald-800'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-100 text-[#00874c] border-emerald-200'
                               }`}
                             >
                               {r.status}
@@ -746,11 +766,11 @@ export const RelatoriosPage: React.FC = () => {
                 {restricoesFiltradas.length > 0 && (
                   <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-semibold text-slate-800 text-xs">
                     <tr>
-                      <td className="px-6 py-3.5 uppercase tracking-wider text-slate-500">
+                      <td className="px-6 py-3.5 uppercase tracking-wider text-slate-500 font-poppins">
                         Total Filtrado ({restricoesFiltradas.length} itens)
                       </td>
                       <td className="px-6 py-3.5"></td>
-                      <td className="px-6 py-3.5 text-blue-700 font-bold text-sm">
+                      <td className="px-6 py-3.5 text-[#004b87] font-bold text-sm font-poppins">
                         {formatarMoeda(valorTotalTabela)}
                       </td>
                       <td className="px-6 py-3.5" colSpan={2}></td>
@@ -760,7 +780,7 @@ export const RelatoriosPage: React.FC = () => {
               </table>
             </div>
 
-            {/* CONTROLO DE PAGINAÇÃO */}
+            {/* CONTROLE DE PAGINAÇÃO */}
             {totalPaginas > 1 && (
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
                 <span className="text-xs text-slate-500">
@@ -771,14 +791,14 @@ export const RelatoriosPage: React.FC = () => {
                   <button
                     disabled={paginaAtual === 1}
                     onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
-                    className="px-3 py-1 bg-white border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1 bg-white border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     Anterior
                   </button>
                   <button
                     disabled={paginaAtual === totalPaginas}
                     onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
-                    className="px-3 py-1 bg-white border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1 bg-white border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     Seguinte
                   </button>
