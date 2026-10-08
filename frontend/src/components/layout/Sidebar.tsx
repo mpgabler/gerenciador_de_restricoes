@@ -81,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           modoRecolhido ? 'w-20 p-3' : 'w-64 p-4'
         } ${isMobile ? 'w-64 p-4 shadow-2xl' : ''}`}
       >
-        {/* LOGO INSTITUCIONAL BANESTES COM A SETA ASCENDENTE */}
+        {/* LOGO INSTITUCIONAL BANTESTES COM A SETA ASCENDENTE */}
         <div
           className={`flex items-center pb-5 border-b border-slate-800/80 ${
             modoRecolhido ? 'justify-center' : 'justify-between'
@@ -175,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className={`flex items-center text-left ${
               modoRecolhido ? 'justify-center' : 'gap-3 px-1'
             }`}
-            title={modoRecolhido ? 'Operador de Risco (analista@banestes.com.br)' : undefined}
+            title={modoRecolhido ? 'Operador de Risco (analista@bantestes.com.br)' : undefined}
           >
             <div className="w-8 h-8 shrink-0 rounded-full bg-slate-800 border border-[#009ee3]/40 flex items-center justify-center text-xs font-bold text-[#009ee3]">
               OP
@@ -183,7 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!modoRecolhido && (
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-slate-200 truncate font-poppins">Operador de Risco</p>
-                <p className="text-[10px] text-slate-400 truncate">analista@banestes.com.br</p>
+                <p className="text-[10px] text-slate-400 truncate">analista@bantestes.com.br</p>
               </div>
             )}
           </div>

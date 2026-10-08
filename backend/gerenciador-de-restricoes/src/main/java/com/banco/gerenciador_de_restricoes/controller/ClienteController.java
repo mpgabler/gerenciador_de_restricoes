@@ -46,4 +46,13 @@ public class ClienteController {
     public ResponseEntity<ClienteResponseDTO> reativar(@PathVariable UUID id) { 
     return ResponseEntity.ok(clienteService.reativar(id));
     }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ClienteResponseDTO> atualizar(
+    @PathVariable UUID id, 
+    @RequestBody @Valid ClienteRequestDTO dto
+    ) {
+    ClienteResponseDTO atualizado = clienteService.atualizar(id, dto);
+    return ResponseEntity.ok(atualizado);
+}
 }

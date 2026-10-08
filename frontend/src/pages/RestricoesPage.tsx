@@ -3,6 +3,22 @@ import { restricaoService, type RestricaoResponseDTO } from '../services/restric
 import { clienteService, type Cliente } from '../services/clienteService';
 import { ModalNovaRestricaoGlobal } from '../components/modals/ModalNovaRestricaoGlobal';
 
+export const formatarCpfCnpj = (valor: string): string => {
+  const limpo = (valor || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
+  const temLetra = /[A-Z]/.test(limpo);
+
+  if (!temLetra && limpo.length <= 11) {
+    return limpo
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+
+  return limpo
+    .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
+    .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+};
+
 export const RestricoesPage: React.FC = () => {
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -20,13 +36,28 @@ export const RestricoesPage: React.FC = () => {
     setCarregando(true);
     try {
       const [resRestricoes, resClientes] = await Promise.all([
-        restricaoService.listarTodas().catch(() => []),
+        restricaoService.listarTodas ? restricaoService.listarTodas().catch(() => []) : Promise.resolve([]),
         clienteService.listarTodos().catch(() => []),
       ]);
-      setRestricoes(resRestricoes);
-      setClientes(resClientes);
+
+      const listaRestricoes: RestricaoResponseDTO[] = Array.isArray(resRestricoes)
+        ? resRestricoes
+        : Array.isArray((resRestricoes as any)?.content)
+        ? (resRestricoes as any).content
+        : [];
+
+      const listaClientes: Cliente[] = Array.isArray(resClientes)
+        ? resClientes
+        : Array.isArray((resClientes as any)?.content)
+        ? (resClientes as any).content
+        : [];
+
+      setRestricoes(listaRestricoes);
+      setClientes(listaClientes);
     } catch (e) {
       console.error('Falha ao carregar dados:', e);
+      setRestricoes([]);
+      setClientes([]);
     } finally {
       setCarregando(false);
     }
@@ -41,57 +72,60 @@ export const RestricoesPage: React.FC = () => {
     }
   };
 
+  const listaSeguraClientes = useMemo(() => (Array.isArray(clientes) ? clientes : []), [clientes]);
+  const listaSeguraRestricoes = useMemo(() => (Array.isArray(restricoes) ? restricoes : []), [restricoes]);
+
   // Mapeamento por ID
   const mapaClientesPorId = useMemo(() => {
     const map = new Map<string, Cliente>();
-    clientes.forEach((c) => {
-      if (c.id) map.set(c.id, c);
+    listaSeguraClientes.forEach((c) => {
+      if (c?.id) map.set(c.id, c);
     });
     return map;
-  }, [clientes]);
+  }, [listaSeguraClientes]);
 
-  // Mapeamento por Nome (Fallback de resiliência caso clienteId venha ausente no DTO)
+  // Mapeamento por Nome
   const mapaClientesPorNome = useMemo(() => {
     const map = new Map<string, Cliente>();
-    clientes.forEach((c) => {
-      if (c.nome) map.set(c.nome.trim().toLowerCase(), c);
+    listaSeguraClientes.forEach((c) => {
+      if (c?.nome) map.set(c.nome.trim().toLowerCase(), c);
     });
     return map;
-  }, [clientes]);
+  }, [listaSeguraClientes]);
 
-  // Recupera o documento (CPF/CNPJ) e o tipo de pessoa do cliente
+  // Recupera documento e tipo
   const obterDadosCliente = (r: RestricaoResponseDTO) => {
-    const porId = r.clienteId ? mapaClientesPorId.get(r.clienteId) : undefined;
-    const porNome = r.clienteNome ? mapaClientesPorNome.get(r.clienteNome.trim().toLowerCase()) : undefined;
+    const porId = r?.clienteId ? mapaClientesPorId.get(r.clienteId) : undefined;
+    const porNome = r?.clienteNome ? mapaClientesPorNome.get(r.clienteNome.trim().toLowerCase()) : undefined;
     const cliente = porId || porNome;
 
     const documento =
-      (r as any).documento ||
-      (r as any).clienteDocumento ||
-      (r as any).cpf ||
+      (r as any)?.documento ||
+      (r as any)?.clienteDocumento ||
+      (r as any)?.cpf ||
       cliente?.documento ||
-      (cliente as any)?.cpf ||
       '';
 
-    const tipoPessoa = cliente?.tipoPessoa || (documento.replace(/\D/g, '').length > 11 ? 'PJ' : 'PF');
+    const tipoPessoa = cliente?.tipoPessoa || (documento.replace(/[^a-zA-Z0-9]/g, '').length > 11 ? 'PJ' : 'PF');
 
     return { cliente, documento, tipoPessoa };
   };
 
-  // Filtragem combinada resiliente (CPF/CNPJ numérico e com máscara, tipo e status)
+  // Filtragem combinada resiliente
   const restricoesFiltradas = useMemo(() => {
     const termoBusca = busca.trim().toLowerCase();
-    const digitosBusca = busca.replace(/\D/g, '');
+    const termoAlfanumerico = busca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
-    return restricoes.filter((r) => {
+    return listaSeguraRestricoes.filter((r) => {
+      if (!r) return false;
       const { documento } = obterDadosCliente(r);
-      const documentoDigitos = documento.replace(/\D/g, '');
+      const docLimpo = documento.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
       const matchNome = (r.clienteNome || '').toLowerCase().includes(termoBusca);
-      const matchTipo = r.tipoCodigo.toLowerCase().includes(termoBusca);
+      const matchTipo = (r.tipoCodigo || '').toLowerCase().includes(termoBusca);
       const matchDocumento =
         (documento && documento.toLowerCase().includes(termoBusca)) ||
-        (digitosBusca.length > 0 && documentoDigitos.includes(digitosBusca));
+        (termoAlfanumerico.length > 0 && docLimpo.includes(termoAlfanumerico));
 
       const atendeBusca = !termoBusca || matchNome || matchTipo || matchDocumento;
       const atendeTipo = filtroTipo === 'TODOS' || r.tipoCodigo === filtroTipo;
@@ -99,20 +133,20 @@ export const RestricoesPage: React.FC = () => {
 
       return atendeBusca && atendeTipo && atendeStatus;
     });
-  }, [restricoes, mapaClientesPorId, mapaClientesPorNome, busca, filtroTipo, filtroStatus]);
+  }, [listaSeguraRestricoes, mapaClientesPorId, mapaClientesPorNome, busca, filtroTipo, filtroStatus]);
 
-  const totalAtivas = restricoes.filter((r) => r.status === 'ATIVA').length;
-  const totalBaixadas = restricoes.filter((r) => r.status === 'BAIXADA').length;
+  const totalAtivas = listaSeguraRestricoes.filter((r) => r?.status === 'ATIVA').length;
+  const totalBaixadas = listaSeguraRestricoes.filter((r) => r?.status === 'BAIXADA').length;
 
   return (
     <div className="space-y-6 font-sans">
-      <section className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden text-left">
+      <section className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden text-left">
         {/* CABEÇALHO */}
         <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="text-left">
             <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">Gestão Global de Restrições</h3>
             <p className="text-sm text-slate-500">
-              Total: <strong className="text-[#081c30] font-semibold">{restricoes.length}</strong> ocorrências (
+              Total: <strong className="text-[#081c30] font-semibold">{listaSeguraRestricoes.length}</strong> ocorrências (
               <span className="text-amber-600 font-medium">{totalAtivas} ativas</span>,{' '}
               <span className="text-[#00874c] font-medium">{totalBaixadas} regularizadas</span>).
             </p>
@@ -189,21 +223,21 @@ export const RestricoesPage: React.FC = () => {
                 </tr>
               ) : (
                 restricoesFiltradas.map((r) => {
-                  const isAtiva = r.status === 'ATIVA';
+                  const isAtiva = r?.status === 'ATIVA';
                   const { documento, tipoPessoa } = obterDadosCliente(r);
                   const valorFormatado = new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
                     currency: 'BRL',
-                  }).format(r.valor || 0);
+                  }).format(r?.valor || 0);
 
                   return (
-                    <tr key={r.id} className="hover:bg-[#e8f3fa]/20 transition-colors">
+                    <tr key={r?.id || Math.random()} className="hover:bg-[#e8f3fa]/20 transition-colors">
                       <td className="px-6 py-4 font-semibold text-slate-800">
-                        {r.clienteNome || 'Cliente'}
+                        {r?.clienteNome || 'Cliente'}
                         {documento && (
                           <span className="block text-xs font-normal text-slate-400 font-mono">
                             {tipoPessoa === 'PJ' ? 'CNPJ: ' : 'CPF: '}
-                            {documento}
+                            {formatarCpfCnpj(documento)}
                           </span>
                         )}
                       </td>
@@ -211,18 +245,18 @@ export const RestricoesPage: React.FC = () => {
                         <span className="inline-flex items-center gap-1.5 font-sans">
                           <span
                             className={`w-2 h-2 rounded-full ${
-                              r.tipoCodigo === 'FRAUDE'
+                              r?.tipoCodigo === 'FRAUDE'
                                 ? 'bg-red-500'
-                                : r.tipoCodigo === 'BLOQUEIO_JUDICIAL'
+                                : r?.tipoCodigo === 'BLOQUEIO_JUDICIAL'
                                 ? 'bg-purple-500'
                                 : 'bg-amber-500'
                             }`}
                           ></span>
-                          {r.tipoCodigo}
+                          {r?.tipoCodigo || 'OUTROS'}
                         </span>
                       </td>
                       <td className="px-6 py-4 font-medium text-slate-900">{valorFormatado}</td>
-                      <td className="px-6 py-4 text-slate-500">{r.dataOcorrencia}</td>
+                      <td className="px-6 py-4 text-slate-500">{r?.dataOcorrencia || '—'}</td>
                       <td className="px-6 py-4">
                         <span
                           className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
@@ -231,7 +265,7 @@ export const RestricoesPage: React.FC = () => {
                               : 'bg-emerald-100 text-[#00874c] border-emerald-200'
                           }`}
                         >
-                          {r.status}
+                          {r?.status || 'N/A'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -262,7 +296,7 @@ export const RestricoesPage: React.FC = () => {
 
       <ModalNovaRestricaoGlobal
         aberto={modalAberto}
-        clientes={clientes}
+        clientes={listaSeguraClientes}
         onFechar={() => setModalAberto(false)}
         onSucesso={() => carregarDados()}
       />

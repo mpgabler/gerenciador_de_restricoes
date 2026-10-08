@@ -5,6 +5,8 @@ import com.banco.gerenciador_de_restricoes.domain.enums.StatusCliente;
 import com.banco.gerenciador_de_restricoes.dto.ClienteRequestDTO;
 import com.banco.gerenciador_de_restricoes.dto.ClienteResponseDTO;
 import com.banco.gerenciador_de_restricoes.repository.ClienteRepository;
+
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -64,4 +66,26 @@ public class ClienteService {
     cliente.reativar();
     return ClienteResponseDTO.fromEntity(clienteRepository.save(cliente));
     }
+
+    @Transactional
+    public ClienteResponseDTO atualizar(UUID id, ClienteRequestDTO dto) {
+    Cliente cliente = clienteRepository.findById(id)
+        .orElseThrow(() -> new EntityNotFoundException("Cliente não encontrado com ID: " + id));
+
+    cliente.setNome(dto.nome());
+    cliente.setDocumento(dto.documento());
+    cliente.setTipoPessoa(dto.tipoPessoa());
+    cliente.setEmail(dto.email());
+    cliente.setTelefone(dto.telefone());
+    cliente.setLogradouro(dto.logradouro());
+    cliente.setNumero(dto.numero());
+    cliente.setComplemento(dto.complemento());
+    cliente.setBairro(dto.bairro());
+    cliente.setCidade(dto.cidade());
+    cliente.setUf(dto.uf());
+    cliente.setCep(dto.cep());
+
+    Cliente salvo = clienteRepository.save(cliente);
+    return ClienteResponseDTO.fromEntity(salvo);
+}
 }

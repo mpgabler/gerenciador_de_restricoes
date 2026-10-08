@@ -8,6 +8,28 @@ interface ValidadorPageProps {
   clienteIdInicial?: string | null;
 }
 
+// Utilitário de máscara com suporte a CPF numérico e CNPJ Alfanumérico
+export const formatarCpfCnpj = (valor: string): string => {
+  // Mantém apenas letras e números em maiúsculas (máximo de 14 posições)
+  const limpo = (valor || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
+
+  // Se houver qualquer letra, trata diretamente como CNPJ alfanumérico
+  const temLetra = /[A-Z]/.test(limpo);
+
+  if (!temLetra && limpo.length <= 11) {
+    // Padrão CPF (numérico)
+    return limpo
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+
+  // Padrão CNPJ (alfanumérico ou numérico: XX.XXX.XXX/XXXX-XX)
+  return limpo
+    .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
+    .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+};
+
 export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }) => {
   const [clientesBase, setClientesBase] = useState<Cliente[]>([]);
   const [termoBusca, setTermoBusca] = useState<string>('');
@@ -25,7 +47,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     carregarClientesIniciais();
   }, [clienteIdInicial]);
 
-  // Fecha o dropdown ao clicar fora do componente
+  // Fecha o dropdown ao clicar fora
   useEffect(() => {
     const handleClickFora = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -42,7 +64,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
       const lista: Cliente[] = Array.isArray(data) ? data : [];
       setClientesBase(lista);
 
-      // Só processa automaticamente se vier de um clique explícito (clienteIdInicial)
+      // Processa apenas quando houver um ID explícito recebido na transição
       if (clienteIdInicial && lista.length > 0) {
         const clienteAlvo = lista.find((c) => c.id === clienteIdInicial);
         if (clienteAlvo) {
@@ -55,29 +77,31 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     }
   };
 
-  // Avaliação sob demanda: pesquisa ativa apenas a partir de 2 caracteres
+  // Sugestões considerando caracteres alfanuméricos sanitizados
   const sugestoesClientes = useMemo(() => {
-    const termo = termoBusca.trim().toLowerCase();
-    if (termo.length < 2) return [];
-
-    const digitos = termoBusca.replace(/\D/g, '');
+    const caracteresLimpos = termoBusca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (caracteresLimpos.length < 2) return [];
 
     return clientesBase
       .filter((c) => {
-        const matchNome = (c.nome || '').toLowerCase().includes(termo);
-        const docDigitos = (c.documento || '').replace(/\D/g, '');
-        const matchDoc =
-          (c.documento || '').toLowerCase().includes(termo) ||
-          (digitos.length > 0 && docDigitos.includes(digitos));
-        return matchNome || matchDoc;
+        const docLimpo = (c.documento || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        return docLimpo.includes(caracteresLimpos);
       })
       .slice(0, 6);
   }, [clientesBase, termoBusca]);
 
+  const lidarComMudancaDocumento = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valorDigitado = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
+    const textoFormatado = formatarCpfCnpj(valorDigitado);
+
+    setTermoBusca(textoFormatado);
+    setDropdownAberto(valorDigitado.length >= 2);
+  };
+
   const selecionarEProcessarCliente = async (cliente: Cliente, atualizarTexto: boolean = true) => {
     setClienteAtual(cliente);
     if (atualizarTexto) {
-      setTermoBusca(`${cliente.nome} (${cliente.documento})`);
+      setTermoBusca(formatarCpfCnpj(cliente.documento || ''));
     }
     setDropdownAberto(false);
     setErro(null);
@@ -120,7 +144,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
 
   return (
     <div className="space-y-6 font-sans">
-      {/* 1. SEÇÃO DE BUSCA PONTUAL */}
+      {/* 1. SEÇÃO DE CONSULTA PONTUAL POR CPF OU CNPJ (INCLUINDO ALFANUMÉRICO) */}
       <section className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs text-left">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
@@ -128,7 +152,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
               Consulta & Validação Transacional
             </h3>
             <p className="text-xs text-slate-500">
-              Digite o CPF, CNPJ ou Nome do proponente para executar a conformidade normativa em tempo real.
+              Introduza o CPF ou CNPJ (numérico ou alfanumérico)
             </p>
           </div>
           {clienteAtual && (
@@ -147,23 +171,20 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
               type="text"
               value={termoBusca}
               onFocus={() => {
-                if (termoBusca.trim().length >= 2) {
+                const limpo = termoBusca.replace(/[^a-zA-Z0-9]/g, '');
+                if (limpo.length >= 2) {
                   setDropdownAberto(true);
                 }
               }}
-              onChange={(e) => {
-                const valor = e.target.value;
-                setTermoBusca(valor);
-                setDropdownAberto(valor.trim().length >= 2);
-              }}
+              onChange={lidarComMudancaDocumento}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && sugestoesClientes.length > 0) {
                   e.preventDefault();
                   selecionarEProcessarCliente(sugestoesClientes[0]);
                 }
               }}
-              placeholder="Digite o CPF (ex: 123.456.789-00), CNPJ ou Razão Social..."
-              className="w-full pl-11 pr-28 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-sans"
+              placeholder="Digite o CPF ou CNPJ..."
+              className="w-full pl-11 pr-28 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono tracking-wide"
             />
             <div className="absolute left-3.5 text-slate-400 pointer-events-none">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,16 +203,16 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
           </div>
 
-          {/* DROPDOWN DINÂMICO (ABRE SOMENTE APÓS 2 CARACTERES) */}
-          {dropdownAberto && termoBusca.trim().length >= 2 && (
+          {/* DROPDOWN DINÂMICO DE SUGESTÕES */}
+          {dropdownAberto && termoBusca.replace(/[^a-zA-Z0-9]/g, '').length >= 2 && (
             <div className="absolute z-30 left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto">
               <div className="p-2 bg-slate-50/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-poppins px-3 flex justify-between">
                 <span>Resultados Encontrados</span>
-                <span>Chave Primária</span>
+                <span>Documento</span>
               </div>
               {sugestoesClientes.length === 0 ? (
                 <div className="p-4 text-center text-xs text-slate-400 font-sans">
-                  Nenhum proponente encontrado para o termo pesquisado.
+                  Nenhum proponente encontrado para o documento introduzido.
                 </div>
               ) : (
                 sugestoesClientes.map((c) => (
@@ -204,9 +225,9 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                       <p className="text-xs font-bold text-slate-800 font-poppins group-hover:text-[#004b87] transition-colors">
                         {c.nome}
                       </p>
-                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                         {c.tipoPessoa === 'PJ' ? 'CNPJ: ' : 'CPF: '}
-                        {c.documento}
+                        <strong className="text-slate-700">{formatarCpfCnpj(c.documento)}</strong>
                       </p>
                     </div>
                     <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-md border border-slate-200 group-hover:border-[#004b87]/30 transition-colors">
@@ -236,7 +257,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
           </div>
           <h4 className="font-poppins text-base font-semibold text-slate-700">Aguardando Consulta</h4>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-            Digite o CPF, CNPJ ou Razão Social no campo de busca acima para carregar o parecer do motor e o histórico de restrições.
+            Introduza o CPF ou CNPJ no campo acima para exibir o histórico de ocorrências.
           </p>
         </section>
       )}
@@ -300,7 +321,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                   : 'bg-emerald-100 text-[#00874c] border-emerald-300'
               }`}
             >
-              Decisão Automática (Engine v1 • Banestes)
+              Decisão Automática
             </span>
           </div>
 
@@ -311,7 +332,9 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
             <div>
               <span className="text-slate-500 block text-xs">Documento</span>
-              <span className="font-semibold text-slate-800 font-mono text-xs">{clienteAtual?.documento || '---'}</span>
+              <span className="font-semibold text-slate-800 font-mono text-xs">
+                {formatarCpfCnpj(clienteAtual?.documento || '') || '---'}
+              </span>
             </div>
             <div>
               <span className="text-slate-500 block text-xs">Tipo de Pessoa</span>

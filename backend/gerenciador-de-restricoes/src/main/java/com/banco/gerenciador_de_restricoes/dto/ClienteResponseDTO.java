@@ -12,16 +12,38 @@ public record ClienteResponseDTO(
     String nome,
     String documento,
     TipoPessoa tipoPessoa,
+    String email,
+    String telefone,
+    String logradouro,
+    String numero,
+    String complemento,
+    String bairro,
+    String cidade,
+    String uf,
+    String cep,
     StatusCliente status,
     OffsetDateTime dataCriacao,
     OffsetDateTime dataExclusao
 ) {
     public static ClienteResponseDTO fromEntity(Cliente cliente) {
+        if (cliente == null) {
+            return null;
+        }
+
         return new ClienteResponseDTO(
             cliente.getId(),
             cliente.getNome(),
             cliente.getDocumento(),
             cliente.getTipoPessoa(),
+            cliente.getEmail(),
+            cliente.getTelefone(),
+            cliente.getLogradouro(),
+            cliente.getNumero(),
+            cliente.getComplemento(),
+            cliente.getBairro(),
+            cliente.getCidade(),
+            cliente.getUf(),
+            cliente.getCep(),
             cliente.getStatus(),
             cliente.getDataCriacao(),
             cliente.getDataExclusao()

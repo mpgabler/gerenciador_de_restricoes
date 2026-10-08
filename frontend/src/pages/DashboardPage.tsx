@@ -21,32 +21,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     try {
       const [resClientes, resRestricoes] = await Promise.all([
         clienteService.listarTodos().catch(() => []),
-        restricaoService.listarTodas().catch(() => []),
+        restricaoService.listarTodas ? restricaoService.listarTodas().catch(() => []) : Promise.resolve([]),
       ]);
-      setClientes(resClientes);
-      setRestricoes(resRestricoes);
-    } catch (e) {
-      console.error('Falha ao carregar métricas do dashboard:', e);
+
+      // Garante conversão estrita para array mesmo com paginação Page<T> do Spring Boot
+      const listaClientes: Cliente[] = Array.isArray(resClientes)
+        ? resClientes
+        : Array.isArray((resClientes as any)?.content)
+        ? (resClientes as any).content
+        : [];
+
+      const listaRestricoes: RestricaoResponseDTO[] = Array.isArray(resRestricoes)
+        ? resRestricoes
+        : Array.isArray((resRestricoes as any)?.content)
+        ? (resRestricoes as any).content
+        : [];
+
+      setClientes(listaClientes);
+      setRestricoes(listaRestricoes);
+    } catch (error) {
+      console.error('Erro ao carregar dados do dashboard:', error);
+      setClientes([]);
+      setRestricoes([]);
     } finally {
       setCarregando(false);
     }
   };
 
-  // Cálculos Analíticos e Métricas Executivas
+  // Cálculos Analíticos e Métricas Executivas protegidos com arrays seguros
   const metricas = useMemo(() => {
-    const ativas = restricoes.filter((r) => r.status === 'ATIVA');
-    const baixadas = restricoes.filter((r) => r.status === 'BAIXADA');
+    const listaClientes = Array.isArray(clientes) ? clientes : [];
+    const listaRestricoes = Array.isArray(restricoes) ? restricoes : [];
 
-    const totalValorAtivo = ativas.reduce((acc, r) => acc + (r.valor || 0), 0);
-    const totalFraudes = ativas.filter((r) => r.tipoCodigo === 'FRAUDE').length;
-    const totalJudiciais = ativas.filter((r) => r.tipoCodigo === 'BLOQUEIO_JUDICIAL').length;
-    const totalInadimplencias = ativas.filter((r) => r.tipoCodigo === 'INADIMPLENCIA').length;
+    const ativas = listaRestricoes.filter((r) => r?.status === 'ATIVA');
+    const baixadas = listaRestricoes.filter((r) => r?.status === 'BAIXADA');
+
+    const totalValorAtivo = ativas.reduce((acc, r) => acc + (r?.valor || 0), 0);
+    const totalFraudes = ativas.filter((r) => r?.tipoCodigo === 'FRAUDE').length;
+    const totalJudiciais = ativas.filter((r) => r?.tipoCodigo === 'BLOQUEIO_JUDICIAL').length;
+    const totalInadimplencias = ativas.filter((r) => r?.tipoCodigo === 'INADIMPLENCIA').length;
 
     // Identificar clientes com restrições ativas
-    const idsClientesComRestricao = new Set(ativas.map((r) => r.clienteId));
-    const clientesRegulares = clientes.filter((c) => !idsClientesComRestricao.has(c.id)).length;
-    const taxaSaudeCarteira = clientes.length > 0
-      ? ((clientesRegulares / clientes.length) * 100).toFixed(0)
+    const idsClientesComRestricao = new Set(ativas.map((r) => r?.clienteId).filter(Boolean));
+    const clientesRegulares = listaClientes.filter((c) => !idsClientesComRestricao.has(c?.id)).length;
+    const taxaSaudeCarteira = listaClientes.length > 0
+      ? ((clientesRegulares / listaClientes.length) * 100).toFixed(0)
       : '100';
 
     return {
@@ -62,13 +81,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   }, [restricoes, clientes]);
 
   const formatarMoeda = (valor: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
 
   return (
     <div className="space-y-6 font-sans">
       {/* 1. HERO BANNER BANTESTES */}
       <section className="relative overflow-hidden bg-gradient-to-r from-[#081c30] via-[#002855] to-[#004b87] rounded-2xl p-6 md:p-8 text-white shadow-md border border-[#009ee3]/20 text-left">
-        {/* Marca d'água vetorial Bantestes (Seta Ascendente e Curva) */}
         <div className="absolute right-0 top-0 bottom-0 opacity-10 pointer-events-none flex items-center pr-8">
           <svg className="w-80 h-80 text-[#009ee3]" viewBox="0 0 200 200" fill="currentColor">
             <path d="M120 40 L160 40 L160 80 L140 80 L140 68 L70 138 L56 124 L126 54 L114 54 Z" />
@@ -111,7 +129,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         </div>
       </section>
 
-      {/* 2. KPIS EXECUTIVOS EM TEMPO REAL (SUBSTITUINDO OS ATALHOS GENÉRICOS) */}
+      {/* 2. KPIS EXECUTIVOS EM TEMPO REAL */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
         {/* KPI 1: Exposição Financeira */}
         <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs hover:border-[#004b87]/40 transition-all">
@@ -307,20 +325,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               </div>
             ) : (
               restricoes.slice(0, 5).map((r) => {
-                const isAtiva = r.status === 'ATIVA';
-                const valorFormatado = formatarMoeda(r.valor || 0);
+                const isAtiva = r?.status === 'ATIVA';
+                const valorFormatado = formatarMoeda(r?.valor || 0);
 
                 return (
                   <div
-                    key={r.id}
+                    key={r?.id || Math.random()}
                     className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-[#e8f3fa]/30 transition-all gap-2"
                   >
                     <div className="flex items-center gap-3">
                       <span
                         className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                          r.tipoCodigo === 'FRAUDE'
+                          r?.tipoCodigo === 'FRAUDE'
                             ? 'bg-red-500'
-                            : r.tipoCodigo === 'BLOQUEIO_JUDICIAL'
+                            : r?.tipoCodigo === 'BLOQUEIO_JUDICIAL'
                             ? 'bg-purple-500'
                             : 'bg-amber-500'
                         }`}
@@ -328,13 +346,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="text-xs font-bold text-slate-800 font-poppins">
-                            {r.tipoCodigo}
+                            {r?.tipoCodigo || 'OUTROS'}
                           </p>
                           <span className="text-xs text-slate-400">•</span>
-                          <span className="text-xs text-slate-600 font-medium">{r.clienteNome || 'Cliente'}</span>
+                          <span className="text-xs text-slate-600 font-medium">{r?.clienteNome || 'Cliente'}</span>
                         </div>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          Ocorrência: {r.dataOcorrencia} • Valor: <strong className="text-slate-700">{valorFormatado}</strong>
+                          Ocorrência: {r?.dataOcorrencia || '—'} • Valor: <strong className="text-slate-700">{valorFormatado}</strong>
                         </p>
                       </div>
                     </div>
@@ -346,7 +364,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                           : 'bg-emerald-50 text-[#00874c] border-emerald-200'
                       }`}
                     >
-                      {r.status}
+                      {r?.status || 'N/A'}
                     </span>
                   </div>
                 );
