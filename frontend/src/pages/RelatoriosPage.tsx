@@ -124,7 +124,10 @@ export const RelatoriosPage: React.FC = () => {
   const aplicarAtalhoPeriodo = (atalho: 'todos' | 'hoje' | '7dias' | 'mes' | 'ano') => {
     setAtalhoAtivo(atalho);
     const hoje = new Date();
-    const hojeFormatado = hoje.toISOString().split('T')[0];
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    const hojeFormatado = `${ano}-${mes}-${dia}`;
 
     if (atalho === 'todos') {
       setDataInicio('');
@@ -141,21 +144,22 @@ export const RelatoriosPage: React.FC = () => {
     if (atalho === '7dias') {
       const d7 = new Date();
       d7.setDate(hoje.getDate() - 7);
-      setDataInicio(d7.toISOString().split('T')[0]);
+      const a7 = d7.getFullYear();
+      const m7 = String(d7.getMonth() + 1).padStart(2, '0');
+      const dia7 = String(d7.getDate()).padStart(2, '0');
+      setDataInicio(`${a7}-${m7}-${dia7}`);
       setDataFim(hojeFormatado);
       return;
     }
 
     if (atalho === 'mes') {
-      const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-      setDataInicio(inicioMes.toISOString().split('T')[0]);
+      setDataInicio(`${ano}-${mes}-01`);
       setDataFim(hojeFormatado);
       return;
     }
 
     if (atalho === 'ano') {
-      const inicioAno = new Date(hoje.getFullYear(), 0, 1);
-      setDataInicio(inicioAno.toISOString().split('T')[0]);
+      setDataInicio(`${ano}-01-01`);
       setDataFim(hojeFormatado);
       return;
     }
@@ -247,7 +251,6 @@ export const RelatoriosPage: React.FC = () => {
 
   const totalFraudesAtivas = ativasFiltradas.filter((r) => r?.tipoCodigo === 'FRAUDE').length;
   const totalJudiciaisAtivas = ativasFiltradas.filter((r) => r?.tipoCodigo === 'BLOQUEIO_JUDICIAL').length;
-  const totalInadimplenciasAtivas = ativasFiltradas.filter((r) => r?.tipoCodigo === 'INADIMPLENCIA').length;
 
   const taxaRegularizacao = totalFiltradas > 0
     ? ((baixadasFiltradas.length / totalFiltradas) * 100).toFixed(1)
@@ -623,94 +626,7 @@ export const RelatoriosPage: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. VISUALIZAÇÃO GRÁFICA */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-left">
-            <section className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-xs">
-              <h3 className="font-poppins text-base font-bold text-slate-800 mb-1">Distribuição de Restrições Ativas</h3>
-              <p className="text-xs text-slate-500 mb-6">Contagem de registros vigentes por classificação de risco no recorte atual.</p>
-
-              <div className="space-y-4 text-sm">
-                <div>
-                  <div className="flex justify-between font-medium mb-1">
-                    <span className="text-slate-700 flex items-center gap-1.5 font-poppins text-xs font-semibold">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Inadimplências
-                    </span>
-                    <span className="text-slate-900 font-semibold font-poppins">{totalInadimplenciasAtivas}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5">
-                    <div
-                      className="bg-amber-500 h-2.5 rounded-full transition-all"
-                      style={{
-                        width: `${ativasFiltradas.length > 0 ? (totalInadimplenciasAtivas / ativasFiltradas.length) * 100 : 0}%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1">
-                    <span className="text-slate-700 flex items-center gap-1.5 font-poppins text-xs font-semibold">
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span> Fraudes
-                    </span>
-                    <span className="text-slate-900 font-semibold font-poppins">{totalFraudesAtivas}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5">
-                    <div
-                      className="bg-red-500 h-2.5 rounded-full transition-all"
-                      style={{
-                        width: `${ativasFiltradas.length > 0 ? (totalFraudesAtivas / ativasFiltradas.length) * 100 : 0}%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-medium mb-1">
-                    <span className="text-slate-700 flex items-center gap-1.5 font-poppins text-xs font-semibold">
-                      <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Bloqueios Judiciais
-                    </span>
-                    <span className="text-slate-900 font-semibold font-poppins">{totalJudiciaisAtivas}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2.5">
-                    <div
-                      className="bg-purple-500 h-2.5 rounded-full transition-all"
-                      style={{
-                        width: `${ativasFiltradas.length > 0 ? (totalJudiciaisAtivas / ativasFiltradas.length) * 100 : 0}%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-xs flex flex-col justify-between">
-              <div>
-                <h3 className="font-poppins text-base font-bold text-slate-800 mb-1">Parâmetros das Regras de Negócio</h3>
-                <p className="text-xs text-slate-500 mb-4">Critérios normativos avaliados pelo motor de decisão do Banestes.</p>
-
-                <ul className="space-y-3 text-xs text-slate-600">
-                  <li className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <strong className="text-[#081c30] font-poppins block text-sm mb-0.5">Política de Fraude & Bloqueio Judicial</strong>
-                    Bloqueio compulsório para qualquer proposta caso haja apontamento ativo registrado no CPF/CNPJ.
-                  </li>
-                  <li className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <strong className="text-[#081c30] font-poppins block text-sm mb-0.5">Teto Financeiro e Temporal de Inadimplência</strong>
-                    Bloqueio automático se o montante acumulado for superior a R$ 5.000,00 ou se o atraso exceder 90 dias.
-                  </li>
-                </ul>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-slate-200 text-xs text-slate-400 flex justify-between items-center">
-                <span>Motor v1.0 • Validação Transacional</span>
-                <span className="text-[#00874c] font-semibold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00874c]"></span>
-                  Engine Homologada
-                </span>
-              </div>
-            </section>
-          </div>
-
-          {/* 4. TABELA DETALHADA COM ORDENAÇÃO E PAGINAÇÃO */}
+          {/* 3. TABELA DETALHADA COM ORDENAÇÃO E PAGINAÇÃO */}
           <section className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden text-left">
             <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>

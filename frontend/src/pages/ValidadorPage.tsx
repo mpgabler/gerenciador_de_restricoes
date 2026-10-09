@@ -236,7 +236,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                   selecionarEProcessarCliente(sugestoesClientes[0]);
                 }
               }}
-              placeholder="Digite o CPF, CNPJ ou Nome do proponente..."
+              placeholder="Digite o CPF ou CNPJ do proponente..."
               className="w-full pl-11 pr-28 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono tracking-wide"
             />
             <div className="absolute left-3.5 text-slate-400 pointer-events-none">
