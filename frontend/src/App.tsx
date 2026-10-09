@@ -13,9 +13,22 @@ export const App: React.FC = () => {
   const [sidebarRecolhida, setSidebarRecolhida] = useState<boolean>(false);
   const [clienteParaAvaliarId, setClienteParaAvaliarId] = useState<string | null>(null);
 
+  // Estado para armazenar o filtro inicial ao navegar para Restrições
+  const [filtroStatusInicialRestricoes, setFiltroStatusInicialRestricoes] = useState<string>('TODOS');
+
   const navegarParaAvaliacao = (clienteId: string) => {
     setClienteParaAvaliarId(clienteId);
     setActiveTab('validador');
+  };
+
+  // Função de navegação com suporte a filtro pré-selecionado
+  const navegarParaAba = (aba: TabType, filtroStatus?: string) => {
+    if (filtroStatus) {
+      setFiltroStatusInicialRestricoes(filtroStatus);
+    } else {
+      setFiltroStatusInicialRestricoes('TODOS');
+    }
+    setActiveTab(aba);
   };
 
   const getTitulo = () => {
@@ -40,6 +53,8 @@ export const App: React.FC = () => {
       <Sidebar
         activeTab={activeTab}
         onSelectTab={(tab) => {
+          // Ao mudar de aba pelo menu lateral, reseta o filtro inicial para o padrão
+          setFiltroStatusInicialRestricoes('TODOS');
           setActiveTab(tab);
         }}
         menuAbertoMobile={menuMobileAberto}
@@ -55,15 +70,25 @@ export const App: React.FC = () => {
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {activeTab === 'dashboard' && <DashboardPage onNavigate={setActiveTab} />}
+          {activeTab === 'dashboard' && (
+            <DashboardPage onNavigate={navegarParaAba} />
+          )}
+
           {activeTab === 'validador' && (
             <ValidadorPage clienteIdInicial={clienteParaAvaliarId} />
           )}
+
           {activeTab === 'clientes' && (
             <ClientesPage onAvaliarCliente={navegarParaAvaliacao} />
           )}
-          {activeTab === 'restricoes' && <RestricoesPage />}
-          {activeTab === 'relatorios' && <RelatoriosPage />}
+
+          {activeTab === 'restricoes' && (
+            <RestricoesPage statusInicial={filtroStatusInicialRestricoes} />
+          )}
+
+          {activeTab === 'relatorios' && (
+            <RelatoriosPage />
+          )}
         </main>
       </div>
     </div>

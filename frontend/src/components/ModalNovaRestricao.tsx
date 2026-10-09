@@ -11,6 +11,15 @@ interface ModalNovaRestricaoProps {
   onSuccess: () => void;
 }
 
+// Retorna a data no fuso horário local (YYYY-MM-DD), evitando avançar o dia em horários noturnos
+const obterDataHojeLocal = (): string => {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+};
+
 export function ModalNovaRestricao({
   clienteId,
   clienteNome,
@@ -18,11 +27,10 @@ export function ModalNovaRestricao({
   onClose,
   onSuccess,
 }: ModalNovaRestricaoProps) {
+  const hoje = obterDataHojeLocal();
   const [tipoCodigo, setTipoCodigo] = useState<string>('INADIMPLENCIA');
   const [valor, setValor] = useState<string>('5500.00');
-  const [dataOcorrencia, setDataOcorrencia] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [dataOcorrencia, setDataOcorrencia] = useState<string>(hoje);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -45,7 +53,12 @@ export function ModalNovaRestricao({
       onSuccess();
       onClose();
     } catch (err: any) {
-      setErro(err.response?.data?.erro || 'Erro ao cadastrar restrição.');
+      // Captura mensagem vinda do Spring Boot (ex.: validações do Bean Validation)
+      const mensagemErro =
+        err.response?.data?.message ||
+        err.response?.data?.erro ||
+        'Erro ao cadastrar restrição.';
+      setErro(mensagemErro);
     } finally {
       setSalvando(false);
     }
@@ -111,6 +124,7 @@ export function ModalNovaRestricao({
             <input
               type="date"
               required
+              max={hoje}
               value={dataOcorrencia}
               onChange={(e) => setDataOcorrencia(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"

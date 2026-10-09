@@ -2,6 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { restricaoService, type RestricaoResponseDTO } from '../services/restricaoService';
 import { clienteService, type Cliente } from '../services/clienteService';
 import { ModalNovaRestricaoGlobal } from '../components/modals/ModalNovaRestricaoGlobal';
+import { ModalContatoRenegociacao } from '../components/modals/ModalContatoRenegociacao';
+
+interface RestricoesPageProps {
+  statusInicial?: string;
+}
 
 export const formatarCpfCnpj = (valor: string): string => {
   const limpo = (valor || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
@@ -19,14 +24,38 @@ export const formatarCpfCnpj = (valor: string): string => {
     .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
-export const RestricoesPage: React.FC = () => {
+// Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
+export const formatarDataBR = (dataStr?: string | null): string => {
+  if (!dataStr) return '—';
+  const limpo = dataStr.split('T')[0];
+  const partes = limpo.split('-');
+  if (partes.length === 3) {
+    const [ano, mes, dia] = partes;
+    return `${dia}/${mes}/${ano}`;
+  }
+  return dataStr;
+};
+
+export const RestricoesPage: React.FC<RestricoesPageProps> = ({ statusInicial = 'TODOS' }) => {
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busca, setBusca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
-  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [filtroStatus, setFiltroStatus] = useState<string>(statusInicial);
   const [modalAberto, setModalAberto] = useState(false);
   const [carregando, setCarregando] = useState(false);
+
+  // Estados para o Modal de Contato / Renegociação
+  const [modalContatoAberto, setModalContatoAberto] = useState(false);
+  const [clienteContato, setClienteContato] = useState<Cliente | null>(null);
+  const [restricaoContato, setRestricaoContato] = useState<RestricaoResponseDTO | null>(null);
+
+  // Sincroniza caso statusInicial seja atualizado pela navegação do Dashboard
+  useEffect(() => {
+    if (statusInicial) {
+      setFiltroStatus(statusInicial);
+    }
+  }, [statusInicial]);
 
   useEffect(() => {
     carregarDados();
@@ -75,7 +104,7 @@ export const RestricoesPage: React.FC = () => {
   const listaSeguraClientes = useMemo(() => (Array.isArray(clientes) ? clientes : []), [clientes]);
   const listaSeguraRestricoes = useMemo(() => (Array.isArray(restricoes) ? restricoes : []), [restricoes]);
 
-  // Mapeamento por ID
+  // Mapeamentos de Clientes
   const mapaClientesPorId = useMemo(() => {
     const map = new Map<string, Cliente>();
     listaSeguraClientes.forEach((c) => {
@@ -84,7 +113,6 @@ export const RestricoesPage: React.FC = () => {
     return map;
   }, [listaSeguraClientes]);
 
-  // Mapeamento por Nome
   const mapaClientesPorNome = useMemo(() => {
     const map = new Map<string, Cliente>();
     listaSeguraClientes.forEach((c) => {
@@ -93,7 +121,6 @@ export const RestricoesPage: React.FC = () => {
     return map;
   }, [listaSeguraClientes]);
 
-  // Recupera documento e tipo
   const obterDadosCliente = (r: RestricaoResponseDTO) => {
     const porId = r?.clienteId ? mapaClientesPorId.get(r.clienteId) : undefined;
     const porNome = r?.clienteNome ? mapaClientesPorNome.get(r.clienteNome.trim().toLowerCase()) : undefined;
@@ -111,12 +138,19 @@ export const RestricoesPage: React.FC = () => {
     return { cliente, documento, tipoPessoa };
   };
 
-  // Filtragem combinada resiliente
+  const abrirContatoRenegociacao = (r: RestricaoResponseDTO) => {
+    const { cliente } = obterDadosCliente(r);
+    setClienteContato(cliente || null);
+    setRestricaoContato(r);
+    setModalContatoAberto(true);
+  };
+
+  // Filtragem e Ordenação Decrescente por Data de Ocorrência (Mais recente primeiro)
   const restricoesFiltradas = useMemo(() => {
     const termoBusca = busca.trim().toLowerCase();
     const termoAlfanumerico = busca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
-    return listaSeguraRestricoes.filter((r) => {
+    const filtradas = listaSeguraRestricoes.filter((r) => {
       if (!r) return false;
       const { documento } = obterDadosCliente(r);
       const docLimpo = documento.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -132,6 +166,12 @@ export const RestricoesPage: React.FC = () => {
       const atendeStatus = filtroStatus === 'TODOS' || r.status === filtroStatus;
 
       return atendeBusca && atendeTipo && atendeStatus;
+    });
+
+    return filtradas.sort((a, b) => {
+      const dataA = a.dataOcorrencia || '';
+      const dataB = b.dataOcorrencia || '';
+      return dataB.localeCompare(dataA);
     });
   }, [listaSeguraRestricoes, mapaClientesPorId, mapaClientesPorNome, busca, filtroTipo, filtroStatus]);
 
@@ -204,7 +244,7 @@ export const RestricoesPage: React.FC = () => {
                 <th className="px-6 py-3.5 font-poppins">Valor Atrasado</th>
                 <th className="px-6 py-3.5 font-poppins">Data Ocorrência</th>
                 <th className="px-6 py-3.5 font-poppins">Status</th>
-                <th className="px-6 py-3.5 text-right font-poppins">Ação</th>
+                <th className="px-6 py-3.5 text-right font-poppins w-48 min-w-[190px]">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -224,7 +264,7 @@ export const RestricoesPage: React.FC = () => {
               ) : (
                 restricoesFiltradas.map((r) => {
                   const isAtiva = r?.status === 'ATIVA';
-                  const { documento, tipoPessoa } = obterDadosCliente(r);
+                  const { cliente, documento, tipoPessoa } = obterDadosCliente(r);
                   const valorFormatado = new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
                     currency: 'BRL',
@@ -232,7 +272,7 @@ export const RestricoesPage: React.FC = () => {
 
                   return (
                     <tr key={r?.id || Math.random()} className="hover:bg-[#e8f3fa]/20 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-slate-800">
+                      <td className="px-6 py-4 font-semibold text-slate-800 align-middle">
                         {r?.clienteNome || 'Cliente'}
                         {documento && (
                           <span className="block text-xs font-normal text-slate-400 font-mono">
@@ -241,7 +281,7 @@ export const RestricoesPage: React.FC = () => {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-slate-800">
+                      <td className="px-6 py-4 font-semibold text-slate-800 align-middle">
                         <span className="inline-flex items-center gap-1.5 font-sans">
                           <span
                             className={`w-2 h-2 rounded-full ${
@@ -255,11 +295,13 @@ export const RestricoesPage: React.FC = () => {
                           {r?.tipoCodigo || 'OUTROS'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-medium text-slate-900">{valorFormatado}</td>
-                      <td className="px-6 py-4 text-slate-500">{r?.dataOcorrencia || '—'}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 font-medium text-slate-900 align-middle">{valorFormatado}</td>
+                      <td className="px-6 py-4 text-slate-700 font-mono text-xs font-medium align-middle">
+                        {formatarDataBR(r?.dataOcorrencia)}
+                      </td>
+                      <td className="px-6 py-4 align-middle">
                         <span
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
+                          className={`w-[78px] h-6 inline-flex items-center justify-center text-[11px] font-bold rounded-md border tracking-wide font-sans text-center ${
                             isAtiva
                               ? 'bg-amber-100 text-amber-800 border-amber-200'
                               : 'bg-emerald-100 text-[#00874c] border-emerald-200'
@@ -268,22 +310,38 @@ export const RestricoesPage: React.FC = () => {
                           {r?.status || 'N/A'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        {isAtiva ? (
+                      <td className="px-6 py-4 text-right align-middle whitespace-nowrap w-48 min-w-[190px]">
+                        <div className="flex items-center justify-end gap-2.5">
+                          {/* BOTÃO PARA VISUALIZAR DADOS E RENEGOCIAR */}
                           <button
-                            onClick={() => handleDarBaixa(r.id)}
-                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#00874c] border border-emerald-300 font-medium text-xs rounded-lg transition-colors shadow-2xs font-sans"
+                            onClick={() => abrirContatoRenegociacao(r)}
+                            disabled={!cliente}
+                            className="w-8 h-8 flex items-center justify-center shrink-0 bg-[#e8f3fa] hover:bg-[#004b87] text-[#004b87] hover:text-white rounded-lg transition-colors border border-[#004b87]/30 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Visualizar dados para renegociação / acionar WhatsApp"
                           >
-                            Dar Baixa
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
                           </button>
-                        ) : (
-                          <button
-                            disabled
-                            className="px-3 py-1.5 bg-slate-100 text-slate-400 font-medium text-xs rounded-lg cursor-not-allowed font-sans"
-                          >
-                            Regularizada
-                          </button>
-                        )}
+
+                          {/* BOTÃO DAR BAIXA / REGULARIZADA COM LARGURA RIGOROSA DE 102px */}
+                          {isAtiva ? (
+                            <button
+                              onClick={() => handleDarBaixa(r.id)}
+                              className="w-[102px] h-8 flex items-center justify-center shrink-0 bg-emerald-50 hover:bg-emerald-100 text-[#00874c] border border-emerald-300 font-semibold text-xs rounded-lg transition-colors shadow-2xs font-sans text-center"
+                            >
+                              Dar Baixa
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="w-[102px] h-8 flex items-center justify-center shrink-0 bg-slate-100 text-slate-400 font-medium text-xs rounded-lg cursor-not-allowed font-sans text-center"
+                            >
+                              Regularizada
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -294,11 +352,24 @@ export const RestricoesPage: React.FC = () => {
         </div>
       </section>
 
+      {/* Modal de Cadastro Global */}
       <ModalNovaRestricaoGlobal
         aberto={modalAberto}
         clientes={listaSeguraClientes}
         onFechar={() => setModalAberto(false)}
         onSucesso={() => carregarDados()}
+      />
+
+      {/* Modal de Dados para Renegociação */}
+      <ModalContatoRenegociacao
+        aberto={modalContatoAberto}
+        cliente={clienteContato}
+        restricao={restricaoContato}
+        onFechar={() => {
+          setModalContatoAberto(false);
+          setClienteContato(null);
+          setRestricaoContato(null);
+        }}
       />
     </div>
   );

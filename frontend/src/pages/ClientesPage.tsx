@@ -241,7 +241,7 @@ export const ClientesPage: React.FC<ClientesPageProps> = ({ onAvaliarCliente }) 
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono text-xs font-semibold text-slate-800">{telFormatado}</span>
                               <a
-                                href={`https://wa.me/55${telApenasDigitos}?text=Ol%C3%A1%2C%20aqui%20%C3%A9%20do%20Banestes.%20Gostar%C3%ADamos%20de%20conversar%20sobre%20condi%C3%A7%C3%B5es%20especiais%20de%20renegocia%C3%A7%C3%A3o.`}
+                                href={`https://wa.me/55${telApenasDigitos}?text=Ol%C3%A1%2C%20aqui%20%C3%A9%20do%20Bantestes.%20Gostar%C3%ADamos%20de%20conversar%20sobre%20condi%C3%A7%C3%B5es%20especiais%20de%20renegocia%C3%A7%C3%A3o.`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-[#00874c] border border-emerald-300 rounded text-[10px] font-semibold inline-flex items-center gap-0.5"

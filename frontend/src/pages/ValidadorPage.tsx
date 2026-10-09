@@ -10,44 +10,62 @@ interface ValidadorPageProps {
 
 // Utilitário de máscara com suporte a CPF numérico e CNPJ Alfanumérico
 export const formatarCpfCnpj = (valor: string): string => {
-  // Mantém apenas letras e números em maiúsculas (máximo de 14 posições)
   const limpo = (valor || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
-
-  // Se houver qualquer letra, trata diretamente como CNPJ alfanumérico
   const temLetra = /[A-Z]/.test(limpo);
 
   if (!temLetra && limpo.length <= 11) {
-    // Padrão CPF (numérico)
     return limpo
       .replace(/(\d{3})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
 
-  // Padrão CNPJ (alfanumérico ou numérico: XX.XXX.XXX/XXXX-XX)
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
     .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
+// Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
+export const formatarDataBR = (dataStr?: string | null): string => {
+  if (!dataStr) return '—';
+  const limpo = dataStr.split('T')[0];
+  const partes = limpo.split('-');
+  if (partes.length === 3) {
+    const [ano, mes, dia] = partes;
+    return `${dia}/${mes}/${ano}`;
+  }
+  return dataStr;
+};
+
 export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }) => {
-  const [clientesBase, setClientesBase] = useState<Cliente[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [termoBusca, setTermoBusca] = useState<string>('');
   const [dropdownAberto, setDropdownAberto] = useState<boolean>(false);
   const [clienteAtual, setClienteAtual] = useState<Cliente | null>(null);
   const [decisao, setDecisao] = useState<ParecerDecisao | null>(null);
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
+  const [filtroStatusTabela, setFiltroStatusTabela] = useState<'TODOS' | 'ATIVA' | 'BAIXADA'>('TODOS');
   const [carregando, setCarregando] = useState<boolean>(false);
-  const [modalRestricaoAberto, setModalRestricaoAberto] = useState(false);
+  const [modalRestricaoAberto, setModalRestricaoAberto] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     carregarClientesIniciais();
-  }, [clienteIdInicial]);
+  }, []);
 
-  // Fecha o dropdown ao clicar fora
+  // Seleciona automaticamente o cliente se um ID inicial for fornecido via navegação
+  useEffect(() => {
+    if (clienteIdInicial && clientes.length > 0) {
+      const encontrado = clientes.find((c) => c.id === clienteIdInicial);
+      if (encontrado) {
+        selecionarEProcessarCliente(encontrado);
+      }
+    }
+  }, [clienteIdInicial, clientes]);
+
+  // Fecha o dropdown ao clicar fora do componente
   useEffect(() => {
     const handleClickFora = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -60,42 +78,51 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
 
   const carregarClientesIniciais = async () => {
     try {
-      const data = await clienteService.listarTodos();
-      const lista: Cliente[] = Array.isArray(data) ? data : [];
-      setClientesBase(lista);
-
-      // Processa apenas quando houver um ID explícito recebido na transição
-      if (clienteIdInicial && lista.length > 0) {
-        const clienteAlvo = lista.find((c) => c.id === clienteIdInicial);
-        if (clienteAlvo) {
-          selecionarEProcessarCliente(clienteAlvo, true);
-        }
-      }
-    } catch (e) {
-      console.error('Erro ao carregar lista de clientes:', e);
-      setClientesBase([]);
+      const res = await clienteService.listarTodos();
+      const lista: Cliente[] = Array.isArray(res)
+        ? res
+        : Array.isArray((res as any)?.content)
+        ? (res as any).content
+        : [];
+      setClientes(lista);
+    } catch (error) {
+      console.error('Erro ao carregar lista de clientes:', error);
+      setClientes([]);
     }
   };
 
-  // Sugestões considerando caracteres alfanuméricos sanitizados
+  // Sugestões considerando caracteres alfanuméricos sanitizados e nomes
   const sugestoesClientes = useMemo(() => {
-    const caracteresLimpos = termoBusca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    if (caracteresLimpos.length < 2) return [];
+    const listaSegura = Array.isArray(clientes) ? clientes : [];
+    const termo = termoBusca.trim();
 
-    return clientesBase
-      .filter((c) => {
-        const docLimpo = (c.documento || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        return docLimpo.includes(caracteresLimpos);
-      })
-      .slice(0, 6);
-  }, [clientesBase, termoBusca]);
+    if (!termo) return [];
+
+    const termoLimpo = termo.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const termoTexto = termo.toLowerCase();
+
+    return listaSegura.filter((c) => {
+      if (!c) return false;
+
+      const docBancoLimpo = (c.documento || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const docBancoFormatado = formatarCpfCnpj(c.documento || '').toLowerCase();
+      const nomeBanco = (c.nome || '').toLowerCase();
+
+      const matchDocLimpo = termoLimpo.length > 0 && docBancoLimpo.includes(termoLimpo);
+      const matchDocFormatado = docBancoFormatado.includes(termoTexto);
+      const matchNome = nomeBanco.includes(termoTexto);
+
+      return matchDocLimpo || matchDocFormatado || matchNome;
+    });
+  }, [clientes, termoBusca]);
 
   const lidarComMudancaDocumento = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const valorDigitado = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
-    const textoFormatado = formatarCpfCnpj(valorDigitado);
+    const raw = e.target.value;
+    const limpo = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
+    const formatado = formatarCpfCnpj(limpo);
 
-    setTermoBusca(textoFormatado);
-    setDropdownAberto(valorDigitado.length >= 2);
+    setTermoBusca(formatado);
+    setDropdownAberto(limpo.length >= 2 || raw.trim().length >= 2);
   };
 
   const selecionarEProcessarCliente = async (cliente: Cliente, atualizarTexto: boolean = true) => {
@@ -104,6 +131,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
       setTermoBusca(formatarCpfCnpj(cliente.documento || ''));
     }
     setDropdownAberto(false);
+    setFiltroStatusTabela('TODOS');
     setErro(null);
     setCarregando(true);
 
@@ -112,7 +140,14 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
         restricaoService.listarPorCliente(cliente.id).catch(() => []),
         motorService.avaliar(cliente.id),
       ]);
-      setRestricoes(Array.isArray(resRestricoes) ? resRestricoes : []);
+
+      const listaRestricoes: RestricaoResponseDTO[] = Array.isArray(resRestricoes)
+        ? resRestricoes
+        : Array.isArray((resRestricoes as any)?.content)
+        ? (resRestricoes as any).content
+        : [];
+
+      setRestricoes(listaRestricoes);
       setDecisao(resDecisao);
     } catch (e: any) {
       console.error('Falha ao avaliar no motor:', e);
@@ -128,6 +163,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     setRestricoes([]);
     setTermoBusca('');
     setDropdownAberto(false);
+    setFiltroStatusTabela('TODOS');
     setErro(null);
   };
 
@@ -142,9 +178,26 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     }
   };
 
+  // 1. Filtragem dinâmica por status na tabela do histórico
+  // 2. Ordenação da mais recente para a mais antiga (Decrescente)
+  const restricoesExibidas = useMemo(() => {
+    const filtradas = filtroStatusTabela === 'TODOS'
+      ? restricoes
+      : restricoes.filter((r) => r.status === filtroStatusTabela);
+
+    return [...filtradas].sort((a, b) => {
+      const dataA = a.dataOcorrencia || '';
+      const dataB = b.dataOcorrencia || '';
+      return dataB.localeCompare(dataA);
+    });
+  }, [restricoes, filtroStatusTabela]);
+
+  const totalAtivas = useMemo(() => restricoes.filter((r) => r.status === 'ATIVA').length, [restricoes]);
+  const totalBaixadas = useMemo(() => restricoes.filter((r) => r.status === 'BAIXADA').length, [restricoes]);
+
   return (
     <div className="space-y-6 font-sans">
-      {/* 1. SEÇÃO DE CONSULTA PONTUAL POR CPF OU CNPJ (INCLUINDO ALFANUMÉRICO) */}
+      {/* 1. SEÇÃO DE CONSULTA PONTUAL POR CPF OU CNPJ */}
       <section className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs text-left">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
@@ -172,7 +225,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
               value={termoBusca}
               onFocus={() => {
                 const limpo = termoBusca.replace(/[^a-zA-Z0-9]/g, '');
-                if (limpo.length >= 2) {
+                if (limpo.length >= 2 || termoBusca.trim().length >= 2) {
                   setDropdownAberto(true);
                 }
               }}
@@ -183,7 +236,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                   selecionarEProcessarCliente(sugestoesClientes[0]);
                 }
               }}
-              placeholder="Digite o CPF ou CNPJ..."
+              placeholder="Digite o CPF, CNPJ ou Nome do proponente..."
               className="w-full pl-11 pr-28 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono tracking-wide"
             />
             <div className="absolute left-3.5 text-slate-400 pointer-events-none">
@@ -204,7 +257,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
           </div>
 
           {/* DROPDOWN DINÂMICO DE SUGESTÕES */}
-          {dropdownAberto && termoBusca.replace(/[^a-zA-Z0-9]/g, '').length >= 2 && (
+          {dropdownAberto && termoBusca.trim().length >= 2 && (
             <div className="absolute z-30 left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto">
               <div className="p-2 bg-slate-50/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-poppins px-3 flex justify-between">
                 <span>Resultados Encontrados</span>
@@ -212,7 +265,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
               </div>
               {sugestoesClientes.length === 0 ? (
                 <div className="p-4 text-center text-xs text-slate-400 font-sans">
-                  Nenhum proponente encontrado para o documento introduzido.
+                  Nenhum proponente encontrado para o termo pesquisado.
                 </div>
               ) : (
                 sugestoesClientes.map((c) => (
@@ -377,7 +430,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
       {/* 3. TABELA DE RESTRIÇÕES DO CLIENTE CONSULTADO */}
       {clienteAtual && (
         <section className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden text-left">
-          <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="text-left">
               <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
                 Histórico de Restrições Registradas
@@ -386,15 +439,58 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 Apontamentos para <strong className="text-[#081c30]">{clienteAtual.nome}</strong> (Total: {restricoes.length}).
               </p>
             </div>
-            <button
-              onClick={() => setModalRestricaoAberto(true)}
-              className="px-4 py-2 bg-[#081c30] hover:bg-[#002855] text-white font-poppins font-medium text-sm rounded-lg transition-colors flex items-center gap-2 self-start sm:self-auto shadow-xs active:scale-[0.99]"
-            >
-              <svg className="w-4 h-4 text-[#009ee3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Incluir Nova Restrição
-            </button>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* FILTRO EM ABAS (TODAS, ATIVAS, BAIXADAS) */}
+              <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-poppins">
+                <button
+                  type="button"
+                  onClick={() => setFiltroStatusTabela('TODOS')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    filtroStatusTabela === 'TODOS'
+                      ? 'bg-white text-slate-800 shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Todas ({restricoes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroStatusTabela('ATIVA')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                    filtroStatusTabela === 'ATIVA'
+                      ? 'bg-white text-amber-800 shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-amber-700'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  Ativas ({totalAtivas})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroStatusTabela('BAIXADA')}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                    filtroStatusTabela === 'BAIXADA'
+                      ? 'bg-white text-[#00874c] shadow-2xs font-semibold'
+                      : 'text-slate-600 hover:text-[#00874c]'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  Baixadas ({totalBaixadas})
+                </button>
+              </div>
+
+              {/* BOTÃO NOVA RESTRIÇÃO */}
+              <button
+                onClick={() => setModalRestricaoAberto(true)}
+                className="px-4 py-2 bg-[#081c30] hover:bg-[#002855] text-white font-poppins font-medium text-sm rounded-lg transition-colors flex items-center gap-2 shadow-xs active:scale-[0.99]"
+              >
+                <svg className="w-4 h-4 text-[#009ee3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Incluir Nova Restrição
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -409,14 +505,16 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {restricoes.length === 0 ? (
+                {restricoesExibidas.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-8 text-center text-slate-400 font-sans">
-                      Nenhuma restrição registrada para este cliente.
+                      {filtroStatusTabela === 'TODOS'
+                        ? 'Nenhuma restrição registrada para este cliente.'
+                        : `Nenhuma restrição ${filtroStatusTabela === 'ATIVA' ? 'ativa' : 'baixada'} para este cliente.`}
                     </td>
                   </tr>
                 ) : (
-                  restricoes.map((r) => {
+                  restricoesExibidas.map((r) => {
                     const isAtiva = r.status === 'ATIVA';
                     const valorFormatado = new Intl.NumberFormat('pt-BR', {
                       style: 'currency',
@@ -440,10 +538,12 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                           </span>
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-900">{valorFormatado}</td>
-                        <td className="px-6 py-4 text-slate-500">{r.dataOcorrencia}</td>
+                        <td className="px-6 py-4 text-slate-700 font-mono text-xs font-medium">
+                          {formatarDataBR(r.dataOcorrencia)}
+                        </td>
                         <td className="px-6 py-4">
                           <span
-                            className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
+                            className={`w-[78px] h-6 inline-flex items-center justify-center text-[11px] font-bold rounded-md border tracking-wide font-sans text-center ${
                               isAtiva
                                 ? 'bg-amber-100 text-amber-800 border-amber-200'
                                 : 'bg-emerald-100 text-[#00874c] border-emerald-200'

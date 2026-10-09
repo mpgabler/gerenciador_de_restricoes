@@ -9,21 +9,53 @@ interface ModalNovaRestricaoGlobalProps {
   onSucesso: () => void;
 }
 
+// Retorna a data no fuso horário local (YYYY-MM-DD), evitando avançar o dia em horários noturnos
+const obterDataHojeLocal = (): string => {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+};
+
+// Converte texto numérico em formato moeda BR (Ex: "5000" ou "5000.5" -> "5.000,50")
+const formatarParaMoedaBR = (valorStr: string): string => {
+  if (!valorStr.trim()) return '';
+  // Normaliza substituindo vírgula por ponto para parse
+  const normalizado = valorStr.replace(/\./g, '').replace(',', '.');
+  const numero = parseFloat(normalizado);
+  if (isNaN(numero)) return valorStr;
+
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numero);
+};
+
+// Converte string formatada (Ex: "5.000,00") para número float aceito pelo backend (Ex: 5000.00)
+const converterMoedaParaNumero = (valorStr: string): number => {
+  if (!valorStr.trim()) return 0;
+  // Remove separadores de milhar e troca vírgula decimal por ponto
+  const limpo = valorStr.replace(/\./g, '').replace(',', '.');
+  const num = parseFloat(limpo);
+  return isNaN(num) ? 0 : num;
+};
+
 export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> = ({
   aberto,
   clientes,
   onFechar,
   onSucesso,
 }) => {
+  const hoje = obterDataHojeLocal();
+
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
   const [buscaCliente, setBuscaCliente] = useState<string>('');
   const [dropdownAberto, setDropdownAberto] = useState<boolean>(false);
 
   const [tipoCodigo, setTipoCodigo] = useState<string>('INADIMPLENCIA');
   const [valor, setValor] = useState<string>('');
-  const [dataOcorrencia, setDataOcorrencia] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [dataOcorrencia, setDataOcorrencia] = useState<string>(hoje);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -36,7 +68,7 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
       setDropdownAberto(false);
       setTipoCodigo('INADIMPLENCIA');
       setValor('');
-      setDataOcorrencia(new Date().toISOString().split('T')[0]);
+      setDataOcorrencia(obterDataHojeLocal());
       setErro(null);
     }
   }, [aberto]);
@@ -52,18 +84,20 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
   }, []);
 
   const sugestoesClientes = useMemo(() => {
+    const listaSegura = Array.isArray(clientes) ? clientes : [];
     const termo = buscaCliente.trim().toLowerCase();
     if (termo.length < 2) return [];
 
-    const digitos = buscaCliente.replace(/\D/g, '');
+    const digitos = buscaCliente.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
-    return clientes
+    return listaSegura
       .filter((c) => {
+        if (!c) return false;
         const matchNome = (c.nome || '').toLowerCase().includes(termo);
-        const docDigitos = (c.documento || '').replace(/\D/g, '');
+        const docLimpo = (c.documento || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         const matchDoc =
           (c.documento || '').toLowerCase().includes(termo) ||
-          (digitos.length > 0 && docDigitos.includes(digitos));
+          (digitos.length > 0 && docLimpo.includes(digitos));
         return matchNome || matchDoc;
       })
       .slice(0, 5);
@@ -98,12 +132,13 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
     setSalvando(true);
     setErro(null);
 
-    // Payload alinhado com o RestricaoRequestDTO do Spring Boot
+    const valorNumerico = tipoCodigo === 'INADIMPLENCIA' ? converterMoedaParaNumero(valor) : null;
+
     const payload: any = {
       clienteId: clienteSelecionado.id,
-      tipoRestricaoCodigo: tipoCodigo, // Campo exato exigido pelo backend
-      tipoCodigo: tipoCodigo,          // Fallback para retrocompatibilidade
-      valor: tipoCodigo === 'INADIMPLENCIA' ? (parseFloat(valor) || 0) : null,
+      tipoRestricaoCodigo: tipoCodigo,
+      tipoCodigo: tipoCodigo,
+      valor: valorNumerico,
       dataOcorrencia,
     };
 
@@ -252,21 +287,42 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
             </select>
           </div>
 
-          {/* 3. VALOR (SE INADIMPLÊNCIA) */}
+          {/* 3. VALOR FORMATADO COM VÍRGULA NO BLUR */}
           {tipoCodigo === 'INADIMPLENCIA' && (
             <div>
               <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
                 Valor do Débito (R$)
               </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                placeholder="Ex: 1500.00"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono"
-              />
+              <div className="relative flex items-center">
+                <span className="absolute left-3.5 text-xs text-slate-400 font-semibold pointer-events-none">
+                  R$
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={valor}
+                  onFocus={() => {
+                    // Ao focar, retira pontuações para facilitar edição rápida
+                    if (valor) {
+                      const num = converterMoedaParaNumero(valor);
+                      setValor(num > 0 ? String(num) : '');
+                    }
+                  }}
+                  onBlur={() => {
+                    // Ao sair do foco, aplica formatação pt-BR com vírgula e 2 casas
+                    if (valor) {
+                      setValor(formatarParaMoedaBR(valor));
+                    }
+                  }}
+                  onChange={(e) => {
+                    // Permite números, vírgula e ponto durante a digitação
+                    const val = e.target.value.replace(/[^0-9.,]/g, '');
+                    setValor(val);
+                  }}
+                  placeholder="0,00"
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono"
+                />
+              </div>
             </div>
           )}
 
@@ -277,13 +333,15 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
             </label>
             <input
               type="date"
+              required
+              max={hoje}
               value={dataOcorrencia}
               onChange={(e) => setDataOcorrencia(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
             />
           </div>
 
-          {/* Ações */}
+          {/* AÇÕES */}
           <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
             <button
               type="button"

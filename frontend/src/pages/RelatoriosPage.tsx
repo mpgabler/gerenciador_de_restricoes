@@ -20,6 +20,18 @@ export const formatarCpfCnpj = (valor: string): string => {
     .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
+// Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
+export const formatarDataBR = (dataStr?: string | null): string => {
+  if (!dataStr) return '—';
+  const limpo = dataStr.split('T')[0];
+  const partes = limpo.split('-');
+  if (partes.length === 3) {
+    const [ano, mes, dia] = partes;
+    return `${dia}/${mes}/${ano}`;
+  }
+  return dataStr;
+};
+
 export const RelatoriosPage: React.FC = () => {
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -256,7 +268,7 @@ export const RelatoriosPage: React.FC = () => {
         `"${doc}"`,
         `"${r.tipoCodigo}"`,
         (r.valor || 0).toFixed(2),
-        `"${r.dataOcorrencia || ''}"`,
+        `"${formatarDataBR(r.dataOcorrencia)}"`,
         `"${r.status}"`,
       ];
     });
@@ -278,7 +290,7 @@ export const RelatoriosPage: React.FC = () => {
   const imprimirRelatorioCompleto = () => {
     const dataHoraEmissao = new Date().toLocaleString('pt-BR');
     const periodoTexto = (dataInicio || dataFim)
-      ? `${dataInicio || 'Início'} até ${dataFim || 'Hoje'}`
+      ? `${formatarDataBR(dataInicio) || 'Início'} até ${formatarDataBR(dataFim) || 'Hoje'}`
       : 'Todo o Histórico';
 
     const linhasHtml = restricoesFiltradas.map((r) => {
@@ -292,7 +304,7 @@ export const RelatoriosPage: React.FC = () => {
           <td style="font-family: monospace;">${doc}</td>
           <td>${r.tipoCodigo}</td>
           <td style="text-align: right; font-weight: bold;">${valorBRL}</td>
-          <td style="text-align: center;">${r.dataOcorrencia || '—'}</td>
+          <td style="text-align: center;">${formatarDataBR(r.dataOcorrencia)}</td>
           <td style="text-align: center; font-weight: bold; color: ${statusColor};">${r.status}</td>
         </tr>
       `;
@@ -751,9 +763,9 @@ export const RelatoriosPage: React.FC = () => {
                     </th>
                     <th
                       onClick={() => alternarOrdenacao('status')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins text-center w-28"
                     >
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center gap-1">
                         Status
                         {campoOrdenacao === 'status' && (ordemAsc ? ' ▲' : ' ▼')}
                       </div>
@@ -777,10 +789,11 @@ export const RelatoriosPage: React.FC = () => {
                   ) : (
                     restricoesPaginadas.map((r) => {
                       const doc = obterDocCliente(r);
+                      const isAtiva = r.status === 'ATIVA';
 
                       return (
                         <tr key={r?.id || Math.random()} className="hover:bg-[#e8f3fa]/20 transition-colors">
-                          <td className="px-6 py-4 font-semibold text-slate-800">
+                          <td className="px-6 py-4 font-semibold text-slate-800 align-middle">
                             {r.clienteNome || 'Cliente'}
                             {doc && (
                               <span className="block text-xs font-normal text-slate-400 font-mono">
@@ -788,7 +801,7 @@ export const RelatoriosPage: React.FC = () => {
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 font-semibold">
+                          <td className="px-6 py-4 font-semibold align-middle">
                             <span
                               className={`inline-block px-2 py-0.5 text-xs rounded border ${
                                 r.tipoCodigo === 'FRAUDE'
@@ -801,12 +814,14 @@ export const RelatoriosPage: React.FC = () => {
                               {r.tipoCodigo}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-slate-900 font-medium">{formatarMoeda(r.valor || 0)}</td>
-                          <td className="px-6 py-4 text-slate-500">{r.dataOcorrencia || '—'}</td>
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-4 text-slate-900 font-medium align-middle">{formatarMoeda(r.valor || 0)}</td>
+                          <td className="px-6 py-4 text-slate-700 font-mono text-xs font-medium align-middle">
+                            {formatarDataBR(r.dataOcorrencia)}
+                          </td>
+                          <td className="px-6 py-4 text-center align-middle">
                             <span
-                              className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
-                                r.status === 'ATIVA'
+                              className={`w-[78px] h-6 inline-flex items-center justify-center text-[11px] font-bold rounded-md border tracking-wide font-sans text-center ${
+                                isAtiva
                                   ? 'bg-amber-100 text-amber-800 border-amber-200'
                                   : 'bg-emerald-100 text-[#00874c] border-emerald-200'
                               }`}
