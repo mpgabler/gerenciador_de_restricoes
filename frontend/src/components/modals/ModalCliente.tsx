@@ -143,19 +143,20 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
     setSalvando(true);
 
-    const payload = {
+    // Constrói o payload enviando string vazia ou valores limpos
+    const payload: any = {
       nome: nome.trim(),
       documento: docLimpo,
       tipoPessoa,
-      email: email.trim() || null,
-      telefone: telefone.replace(/\D/g, '').trim() || null,
-      logradouro: logradouro.trim() || null,
-      numero: numero.trim() || null,
-      complemento: complemento.trim() || null,
-      bairro: bairro.trim() || null,
-      cidade: cidade.trim() || null,
-      uf: uf.trim().toUpperCase() || null,
-      cep: cep.replace(/\D/g, '').trim() || null,
+      email: email.trim() ? email.trim() : '',
+      telefone: telefone.replace(/\D/g, '').trim(),
+      logradouro: logradouro.trim(),
+      numero: numero.trim(),
+      complemento: complemento.trim(),
+      bairro: bairro.trim(),
+      cidade: cidade.trim(),
+      uf: uf.trim().toUpperCase(),
+      cep: cep.replace(/\D/g, '').trim(),
     };
 
     try {
@@ -170,7 +171,10 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
     } catch (err: any) {
       console.error('Falha ao salvar cliente:', err);
       const data = err.response?.data;
-      const msg = data?.message || data?.error || 'Erro ao registrar cliente. Verifique se o backend está aceitando o método PUT e os campos informados.';
+      const msg =
+        data?.message ||
+        data?.error ||
+        'Erro ao registrar cliente. Verifique se os dados estão preenchidos corretamente.';
       setErro(msg);
     } finally {
       setSalvando(false);

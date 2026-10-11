@@ -23,7 +23,9 @@ public class ClienteService {
 
     @Transactional
     public ClienteResponseDTO criar(ClienteRequestDTO dto) {
-        String docLimpo = dto.documento().replaceAll("\\D", "");
+        String docLimpo = dto.documento() != null 
+                ? dto.documento().replaceAll("[^a-zA-Z0-9]", "").toUpperCase() 
+                : "";
 
         if (clienteRepository.existsByDocumento(docLimpo)) {
             throw new IllegalArgumentException("Cliente já cadastrado com este documento.");
@@ -33,12 +35,21 @@ public class ClienteService {
                 .nome(dto.nome())
                 .documento(docLimpo)
                 .tipoPessoa(dto.tipoPessoa())
+                .email(dto.email())
+                .telefone(dto.telefone())
+                .logradouro(dto.logradouro())
+                .numero(dto.numero())
+                .complemento(dto.complemento())
+                .bairro(dto.bairro())
+                .cidade(dto.cidade())
+                .uf(dto.uf())
+                .cep(dto.cep())
                 .status(StatusCliente.ATIVO)
                 .build();
 
         return ClienteResponseDTO.fromEntity(clienteRepository.save(cliente));
     }
-
+    
     @Transactional(readOnly = true)
     public Page<ClienteResponseDTO> listar(Pageable pageable) {
         return clienteRepository.findAll(pageable).map(ClienteResponseDTO::fromEntity);

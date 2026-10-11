@@ -6,6 +6,7 @@ import { ValidadorPage } from './pages/ValidadorPage';
 import { ClientesPage } from './pages/ClientesPage';
 import { RestricoesPage } from './pages/RestricoesPage';
 import { RelatoriosPage } from './pages/RelatoriosPage';
+import { ParametrosPage } from './pages/ParametrosPage';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -43,6 +44,8 @@ export const App: React.FC = () => {
         return 'Gestão Global de Restrições';
       case 'relatorios':
         return 'Relatórios & Inteligência de Risco';
+      case 'parametros':
+        return 'Parâmetros & Políticas de Crédito';
       default:
         return 'Sistema Financeiro Banestes';
     }
@@ -88,6 +91,10 @@ export const App: React.FC = () => {
 
           {activeTab === 'relatorios' && (
             <RelatoriosPage />
+          )}
+
+          {activeTab === 'parametros' && (
+            <ParametrosPage />
           )}
         </main>
       </div>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ModalNovaRestricao } from '../components/modals/ModalNovaRestricao';
-import { motorService, type ParecerDecisao } from '../services/motorService';
+import type { ParecerDecisao } from '../services/motorService';
 import { restricaoService, type RestricaoResponseDTO } from '../services/restricaoService';
 import { clienteService, type Cliente } from '../services/clienteService';
+import { politicaService } from '../services/politicaService';
 
 interface ValidadorPageProps {
   clienteIdInicial?: string | null;
@@ -16,13 +17,13 @@ export const formatarCpfCnpj = (valor: string): string => {
   if (!temLetra && limpo.length <= 11) {
     return limpo
       .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      .replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
 
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2').replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
 // Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
@@ -82,13 +83,120 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
       const lista: Cliente[] = Array.isArray(res)
         ? res
         : Array.isArray((res as any)?.content)
-        ? (res as any).content
-        : [];
+          ? (res as any).content
+          : [];
       setClientes(lista);
     } catch (error) {
       console.error('Erro ao carregar lista de clientes:', error);
       setClientes([]);
     }
+  };
+
+  // Motor dinâmico com princípio de Iretroatividade Normativa e tipagem completa
+  // Motor dinâmico com princípio de Iretroatividade Normativa e tipagem completa
+  const avaliarConformidadeTemporal = async (
+    cliente: Cliente,
+    listaRestricoes: RestricaoResponseDTO[]
+  ): Promise<ParecerDecisao> => {
+    const ativas = listaRestricoes.filter((r) => r.status === 'ATIVA');
+    const agora = new Date();
+
+    const parecerBase = {
+      clienteId: cliente.id,
+      clienteNome: cliente.nome,
+      documento: cliente.documento,
+      tipoPessoa: (cliente.tipoPessoa || 'PF') as 'PF' | 'PJ',
+      dataAvaliacao: agora.toISOString(),
+    };
+
+    if (ativas.length === 0) {
+      return {
+        ...parecerBase,
+        status: 'LIBERADO',
+        bloqueado: false,
+        motivos: [],
+      };
+    }
+
+    const motivos: string[] = [];
+    const todasPoliticas = await politicaService.listarTodas();
+    const politicaVigente = await politicaService.obterVigente();
+
+    // 1. Verificação compulsória de Fraude e Bloqueio Judicial
+    for (const r of ativas) {
+      if (r.tipoCodigo === 'FRAUDE') {
+        motivos.push('Apontamento ativo de FRAUDE registado no cadastro.');
+      }
+      if (r.tipoCodigo === 'BLOQUEIO_JUDICIAL') {
+        motivos.push('BLOQUEIO JUDICIAL ativo a impedir a concessão de crédito.');
+      }
+    }
+
+    // 2. Avaliação de Inadimplências com corte temporal pela vigência de cada ocorrência
+    const inadimplencias = ativas.filter((r) => r.tipoCodigo === 'INADIMPLENCIA');
+
+    if (inadimplencias.length > 0) {
+      let valorAcumulado = 0;
+      let excedeTeto = false;
+      let excedePrazo = false;
+      let tetoReferencia = politicaVigente.tetoInadimplencia;
+      let prazoReferencia = politicaVigente.diasAtrasoMaximo;
+
+      for (const r of inadimplencias) {
+        valorAcumulado += Number(r.valor) || 0;
+
+        const partesData = (r.dataOcorrencia || '').split('T')[0].split('-');
+        let dataOcorr: Date;
+        if (partesData.length === 3) {
+          dataOcorr = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 23, 59, 59);
+        } else {
+          dataOcorr = new Date(r.dataOcorrencia || agora);
+        }
+
+        // Obtém a versão da política que vigorava na data exata desta ocorrência
+        const politicaDaEpoca = todasPoliticas.find((p) => {
+          const inicio = new Date(p.vigenciaInicio);
+          const fim = p.vigenciaFim ? new Date(p.vigenciaFim) : new Date(8640000000000000);
+          return dataOcorr >= inicio && dataOcorr <= fim;
+        }) || politicaVigente;
+
+        const diffTempo = agora.getTime() - dataOcorr.getTime();
+        const diasAtraso = Math.max(0, Math.floor(diffTempo / (1000 * 60 * 60 * 24)));
+
+        if (valorAcumulado > politicaDaEpoca.tetoInadimplencia) {
+          excedeTeto = true;
+          tetoReferencia = politicaDaEpoca.tetoInadimplencia;
+        }
+
+        if (diasAtraso > politicaDaEpoca.diasAtrasoMaximo) {
+          excedePrazo = true;
+          prazoReferencia = politicaDaEpoca.diasAtrasoMaximo;
+        }
+      }
+
+      if (excedeTeto) {
+        const valorFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorAcumulado);
+        const tetoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tetoReferencia);
+        motivos.push(
+          `Inadimplência acumulada de ${valorFormatado} excede o teto permitido de ${tetoFormatado}`
+        );
+      }
+
+      if (excedePrazo) {
+        motivos.push(
+          `Atraso temporal excede a tolerância máxima permitida de ${prazoReferencia} dias`
+        );
+      }
+    }
+
+    const estaBloqueado = motivos.length > 0;
+
+    return {
+      ...parecerBase,
+      status: estaBloqueado ? 'BLOQUEADO' : 'LIBERADO',
+      bloqueado: estaBloqueado,
+      motivos,
+    };
   };
 
   // Sugestões considerando caracteres alfanuméricos sanitizados e nomes
@@ -136,19 +244,19 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     setCarregando(true);
 
     try {
-      const [resRestricoes, resDecisao] = await Promise.all([
-        restricaoService.listarPorCliente(cliente.id).catch(() => []),
-        motorService.avaliar(cliente.id),
-      ]);
+      const resRestricoes = await restricaoService.listarPorCliente(cliente.id).catch(() => []);
 
       const listaRestricoes: RestricaoResponseDTO[] = Array.isArray(resRestricoes)
         ? resRestricoes
         : Array.isArray((resRestricoes as any)?.content)
-        ? (resRestricoes as any).content
-        : [];
+          ? (resRestricoes as any).content
+          : [];
+
+      // Avaliação temporal dinâmica com retorno completo compatível com ParecerDecisao
+      const parecerDinamico = await avaliarConformidadeTemporal(cliente, listaRestricoes);
 
       setRestricoes(listaRestricoes);
-      setDecisao(resDecisao);
+      setDecisao(parecerDinamico);
     } catch (e: any) {
       console.error('Falha ao avaliar no motor:', e);
       setErro(e.response?.data?.message || 'Erro ao processar as regras de conformidade.');
@@ -178,8 +286,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     }
   };
 
-  // 1. Filtragem dinâmica por status na tabela do histórico
-  // 2. Ordenação da mais recente para a mais antiga (Decrescente)
+  // Filtragem dinâmica e ordenação decrescente por data
   const restricoesExibidas = useMemo(() => {
     const filtradas = filtroStatusTabela === 'TODOS'
       ? restricoes
@@ -202,7 +309,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
-              Consulta & Validação Transacional
+              Consulta &amp; Validação Transacional
             </h3>
             <p className="text-xs text-slate-500">
               Introduza o CPF ou CNPJ (numérico ou alfanumérico)
@@ -318,22 +425,19 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
       {/* 2. CARTÃO DE PARECER DA DECISÃO */}
       {clienteAtual && decisao && (
         <section
-          className={`border rounded-2xl p-6 shadow-xs transition-all text-left ${
-            decisao.bloqueado ? 'bg-red-50/70 border-red-200' : 'bg-emerald-50/70 border-emerald-200'
-          }`}
+          className={`border rounded-2xl p-6 shadow-xs transition-all text-left ${decisao.bloqueado ? 'bg-red-50/70 border-red-200' : 'bg-emerald-50/70 border-emerald-200'
+            }`}
         >
           <div
-            className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b ${
-              decisao.bloqueado ? 'border-red-200/80' : 'border-emerald-200/80'
-            }`}
+            className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b ${decisao.bloqueado ? 'border-red-200/80' : 'border-emerald-200/80'
+              }`}
           >
             <div className="flex items-center gap-3">
               <span
-                className={`p-2.5 text-white rounded-xl shadow-xs ${
-                  decisao.bloqueado
+                className={`p-2.5 text-white rounded-xl shadow-xs ${decisao.bloqueado
                     ? 'bg-red-600 shadow-red-600/20'
                     : 'bg-[#00874c] shadow-emerald-600/20'
-                }`}
+                  }`}
               >
                 {decisao.bloqueado ? (
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -352,27 +456,24 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
               </span>
               <div>
                 <span
-                  className={`font-poppins text-xs font-bold uppercase tracking-wider block ${
-                    decisao.bloqueado ? 'text-red-700' : 'text-[#00874c]'
-                  }`}
+                  className={`font-poppins text-xs font-bold uppercase tracking-wider block ${decisao.bloqueado ? 'text-red-700' : 'text-[#00874c]'
+                    }`}
                 >
                   Resultado da Avaliação
                 </span>
                 <h4
-                  className={`font-poppins text-2xl font-extrabold tracking-tight ${
-                    decisao.bloqueado ? 'text-red-950' : 'text-emerald-950'
-                  }`}
+                  className={`font-poppins text-2xl font-extrabold tracking-tight ${decisao.bloqueado ? 'text-red-950' : 'text-emerald-950'
+                    }`}
                 >
                   {decisao.bloqueado ? 'BLOQUEADO' : 'LIBERADO'}
                 </h4>
               </div>
             </div>
             <span
-              className={`px-3 py-1 text-xs font-semibold rounded-full border self-start md:self-auto font-poppins ${
-                decisao.bloqueado
+              className={`px-3 py-1 text-xs font-semibold rounded-full border self-start md:self-auto font-poppins ${decisao.bloqueado
                   ? 'bg-red-100 text-red-800 border-red-300'
                   : 'bg-emerald-100 text-[#00874c] border-emerald-300'
-              }`}
+                }`}
             >
               Decisão Automática
             </span>
@@ -398,9 +499,8 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
           </div>
 
           <div
-            className={`mt-4 bg-white border rounded-xl p-4 shadow-2xs ${
-              decisao.bloqueado ? 'border-red-200' : 'border-emerald-200'
-            }`}
+            className={`mt-4 bg-white border rounded-xl p-4 shadow-2xs ${decisao.bloqueado ? 'border-red-200' : 'border-emerald-200'
+              }`}
           >
             <h5 className="font-poppins text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
               {decisao.bloqueado ? 'Justificativa do Bloqueio:' : 'Parecer de Conformidade:'}
@@ -410,16 +510,15 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 decisao.motivos.map((m, idx) => (
                   <li
                     key={idx}
-                    className={`text-sm font-medium ${
-                      decisao.bloqueado ? 'text-red-700' : 'text-[#00874c]'
-                    }`}
+                    className={`text-sm font-medium ${decisao.bloqueado ? 'text-red-700' : 'text-[#00874c]'
+                      }`}
                   >
                     • {m}
                   </li>
                 ))
               ) : (
                 <li className="text-sm font-medium text-[#00874c]">
-                  Nenhuma restrição impeditiva encontrada no cadastro do proponente.
+                  Nenhuma restrição impeditiva encontrada no cadastro do proponente para os limites vigentes.
                 </li>
               )}
             </ul>
@@ -446,22 +545,20 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 <button
                   type="button"
                   onClick={() => setFiltroStatusTabela('TODOS')}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                    filtroStatusTabela === 'TODOS'
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all ${filtroStatusTabela === 'TODOS'
                       ? 'bg-white text-slate-800 shadow-2xs font-semibold'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   Todas ({restricoes.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setFiltroStatusTabela('ATIVA')}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                    filtroStatusTabela === 'ATIVA'
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${filtroStatusTabela === 'ATIVA'
                       ? 'bg-white text-amber-800 shadow-2xs font-semibold'
                       : 'text-slate-600 hover:text-amber-700'
-                  }`}
+                    }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                   Ativas ({totalAtivas})
@@ -469,11 +566,10 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 <button
                   type="button"
                   onClick={() => setFiltroStatusTabela('BAIXADA')}
-                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                    filtroStatusTabela === 'BAIXADA'
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${filtroStatusTabela === 'BAIXADA'
                       ? 'bg-white text-[#00874c] shadow-2xs font-semibold'
                       : 'text-slate-600 hover:text-[#00874c]'
-                  }`}
+                    }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                   Baixadas ({totalBaixadas})
@@ -526,13 +622,12 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                         <td className="px-6 py-4 font-semibold text-slate-800">
                           <span className="inline-flex items-center gap-1.5 font-sans">
                             <span
-                              className={`w-2 h-2 rounded-full ${
-                                r.tipoCodigo === 'FRAUDE'
+                              className={`w-2 h-2 rounded-full ${r.tipoCodigo === 'FRAUDE'
                                   ? 'bg-red-500'
                                   : r.tipoCodigo === 'BLOQUEIO_JUDICIAL'
-                                  ? 'bg-purple-500'
-                                  : 'bg-amber-500'
-                              }`}
+                                    ? 'bg-purple-500'
+                                    : 'bg-amber-500'
+                                }`}
                             ></span>
                             {r.tipoCodigo || 'OUTROS'}
                           </span>
@@ -543,11 +638,10 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                         </td>
                         <td className="px-6 py-4">
                           <span
-                            className={`w-[78px] h-6 inline-flex items-center justify-center text-[11px] font-bold rounded-md border tracking-wide font-sans text-center ${
-                              isAtiva
+                            className={`w-[78px] h-6 inline-flex items-center justify-center text-[11px] font-bold rounded-md border tracking-wide font-sans text-center ${isAtiva
                                 ? 'bg-amber-100 text-amber-800 border-amber-200'
                                 : 'bg-emerald-100 text-[#00874c] border-emerald-200'
-                            }`}
+                              }`}
                           >
                             {r.status}
                           </span>
