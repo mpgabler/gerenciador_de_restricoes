@@ -13,13 +13,13 @@ import java.util.UUID;
 @Table(name = "clientes")
 @Getter
 @Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@NoArgsConstructor // construtor vazio obrigatorio p/ Reflection no JPA (reconstruir os registros do PostgreSQL em objetos Java)
+@AllArgsConstructor // construtor com todos os parametros p/ o padrao Builder a fim se evitar inversao acidetal de argumentos
 @Builder
 public class Cliente {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @GeneratedValue(strategy = GenerationType.UUID) // identificador unico universal (integridade referencial e a não exposicao de do CPF na URL)
     private UUID id;
 
     @Column(nullable = false, length = 150)
@@ -66,12 +66,12 @@ public class Cliente {
 
     @CreationTimestamp
     @Column(name = "data_criacao", updatable = false)
-    private OffsetDateTime dataCriacao;
+    private OffsetDateTime dataCriacao; // offsetDateTime - tipo moderno para auditoria de selo de tempo com fuso horario
 
     @Column(name = "data_exclusao")
     private OffsetDateTime dataExclusao;
 
-    // Getters explícitos para garantir que não haja erros de resolução de símbolo
+    // Getters explícitos para garantir que não haja erros de resolução de símbolo (só o Lombok estava dando erro)
     public UUID getId() { return id; }
     public String getNome() { return nome; }
     public String getDocumento() { return documento; }
@@ -102,11 +102,13 @@ public class Cliente {
     public void setUf(String uf) { this.uf = uf; }
     public void setCep(String cep) { this.cep = cep; }
 
+    // exclusao logica do cliente carimbando o momento exato da acao
     public void inativar() {
         this.status = StatusCliente.INATIVO;
         this.dataExclusao = OffsetDateTime.now();
     }
 
+    // restaura o cliente para o estado ATIVO e limpa o carimbo de exclusao
     public void reativar() {
         this.status = StatusCliente.ATIVO;
         this.dataExclusao = null;

@@ -6,6 +6,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+// Data Transfer Object - atua como porta de entrada da API REST para a criação e atualização dos clientes
+/*  - Records propiciam imutabilidade (todos os campos são implicitos private final) e isolamento de camadas, consequentemente a segurança, ao evitar acesso direto a entidades JPA (Cliente.java). 
+    - Records possuem implementação automática de equals(), hashCode() e toString() e dispensa Getters/Setters tornando o código conciso.
+    - A biblioteca de serialização Jackson utiliza métodos de acesso nativos para gerar o payload (dto.nome(), dto.documento())
+*/ 
 public record ClienteRequestDTO(
     @NotBlank(message = "O nome é obrigatório")
     @Size(max = 150, message = "O nome deve ter no máximo 150 caracteres")

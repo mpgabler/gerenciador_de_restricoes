@@ -11,7 +11,7 @@ CREATE TABLE clientes (
     data_exclusao TIMESTAMP WITH TIME ZONE NULL
 );
 
--- 2. Parametrização de forma dinâmica das Regras de Negócio
+-- 2. Parametrização das Regras de Negócio
 CREATE TABLE tipos_restricao (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     codigo VARCHAR(50) NOT NULL UNIQUE,

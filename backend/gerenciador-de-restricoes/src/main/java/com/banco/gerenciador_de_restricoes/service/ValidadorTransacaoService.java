@@ -5,6 +5,7 @@ import com.banco.gerenciador_de_restricoes.domain.entity.Restricao;
 import com.banco.gerenciador_de_restricoes.domain.enums.StatusCliente;
 import com.banco.gerenciador_de_restricoes.domain.enums.StatusRestricao;
 import com.banco.gerenciador_de_restricoes.dto.DecisaoTransacaoDTO;
+import com.banco.gerenciador_de_restricoes.dto.PoliticaRiscoResponseDTO;
 import com.banco.gerenciador_de_restricoes.repository.ClienteRepository;
 import com.banco.gerenciador_de_restricoes.repository.RestricaoRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,9 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -25,8 +28,9 @@ public class ValidadorTransacaoService {
 
     private final ClienteRepository clienteRepository;
     private final RestricaoRepository restricaoRepository;
+    private final PoliticaRiscoService politicaRiscoService;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public DecisaoTransacaoDTO avaliar(UUID clienteId) {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado"));
@@ -43,8 +47,9 @@ public class ValidadorTransacaoService {
 
         List<Restricao> restricoesAtivas = restricaoRepository.findByClienteIdAndStatus(clienteId, StatusRestricao.ATIVA);
 
-        BigDecimal acumuladoInadimplencia = BigDecimal.ZERO;
-        BigDecimal tetoInadimplencia = BigDecimal.valueOf(5000.00);
+        // Agrupa o somatório de inadimplência pela política vigente na data de cada ocorrência (Irretroatividade)
+        Map<String, BigDecimal> acumuladoPorVersao = new LinkedHashMap<>();
+        Map<String, PoliticaRiscoResponseDTO> politicasMap = new LinkedHashMap<>();
 
         LocalDate hoje = LocalDate.now();
 
@@ -55,21 +60,37 @@ public class ValidadorTransacaoService {
                         r.getTipoRestricao().getCodigo(), r.getDataOcorrencia()));
             }
 
-            // Regra 2: Inadimplência
+            // Regra 2: Inadimplência (Avaliada sob a política vigente na data da ocorrência)
             if ("INADIMPLENCIA".equalsIgnoreCase(r.getTipoRestricao().getCodigo())) {
-                acumuladoInadimplencia = acumuladoInadimplencia.add(r.getValor());
+                PoliticaRiscoResponseDTO politicaDaEpoca = politicaRiscoService.obterVigenteNaData(r.getDataOcorrencia());
+                String versao = politicaDaEpoca.versao();
+
+                politicasMap.put(versao, politicaDaEpoca);
+                acumuladoPorVersao.merge(versao, r.getValor(), BigDecimal::add);
 
                 long diasAtraso = ChronoUnit.DAYS.between(r.getDataOcorrencia(), hoje);
-                if (diasAtraso > 90) {
-                    motivos.add(String.format("Inadimplência com atraso superior a 90 dias (%d dias decorridos desde %s)", 
-                            diasAtraso, r.getDataOcorrencia()));
+                int limiteDias = politicaDaEpoca.diasAtrasoMaximo();
+
+                if (diasAtraso > limiteDias) {
+                    motivos.add(String.format(
+                            "Inadimplência com atraso superior a %d dias (%d dias decorridos desde %s) [Política %s]", 
+                            limiteDias, diasAtraso, r.getDataOcorrencia(), versao));
                 }
             }
         }
 
-        if (acumuladoInadimplencia.compareTo(tetoInadimplencia) > 0) {
-            motivos.add(String.format("Inadimplência acumulada de R$ %.2f excede o teto permitido de R$ %.2f", 
-                    acumuladoInadimplencia, tetoInadimplencia));
+        // Verifica se o acumulado de cada época excede o teto da respectiva versão da política
+        for (Map.Entry<String, BigDecimal> entry : acumuladoPorVersao.entrySet()) {
+            String versao = entry.getKey();
+            BigDecimal acumulado = entry.getValue();
+            PoliticaRiscoResponseDTO politica = politicasMap.get(versao);
+            BigDecimal tetoPermitido = politica.tetoInadimplencia();
+
+            if (acumulado.compareTo(tetoPermitido) > 0) {
+                motivos.add(String.format(
+                        "Inadimplência acumulada de R$ %.2f excede o teto permitido de R$ %.2f [Política %s]", 
+                        acumulado, tetoPermitido, versao));
+            }
         }
 
         boolean bloqueado = !motivos.isEmpty();
