@@ -9,12 +9,19 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * Entidade JPA que mapeia a tabela 'clientes' no PostgreSQL.
+ * Representa os dados cadastrais, endereço e status de relacionamento dos clientes.
+ * Implementa identificação universal via UUID, auditoria temporal com OffsetDateTime 
+ * e métodos de domínio para exclusão lógica (soft delete) e reativação cadastral, 
+ * preservando a integridade referencial com o histórico de restrições financeiras.
+ */
 @Entity
 @Table(name = "clientes")
 @Getter
 @Setter
 @NoArgsConstructor // construtor vazio obrigatorio p/ Reflection no JPA (reconstruir os registros do PostgreSQL em objetos Java)
-@AllArgsConstructor // construtor com todos os parametros p/ o padrao Builder a fim se evitar inversao acidetal de argumentos
+@AllArgsConstructor // construtor com todos os parametros p/ o padrao Builder a fim de se evitar inversao acidetal de argumentos
 @Builder
 public class Cliente {
 
@@ -71,7 +78,7 @@ public class Cliente {
     @Column(name = "data_exclusao")
     private OffsetDateTime dataExclusao;
 
-    // Getters explícitos para garantir que não haja erros de resolução de símbolo (só o Lombok estava dando erro)
+    // Getters explícitos para garantir que não haja erros de resolução de símbolo (somente com o Lombok estava dando erro)
     public UUID getId() { return id; }
     public String getNome() { return nome; }
     public String getDocumento() { return documento; }

@@ -9,6 +9,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * DTO de entrada (Request) implementado como record imutável para inclusão de novas restrições.
+ * Atua na fronteira da API REST capturando os dados essenciais do apontamento financeiro ou cadastral,
+ * desacoplando o cliente HTTP dos IDs internos de tipos de restrição e prevenindo inconsistências
+ * por meio de validações de valores monetários não negativos e datas de ocorrência cronologicamente válidas.
+ */
 public record RestricaoRequestDTO(
     @NotNull(message = "O ID do cliente é obrigatório")
     UUID clienteId,

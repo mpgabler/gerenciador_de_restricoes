@@ -8,6 +8,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Interface de acesso a dados (Data Access Layer) para a entidade PoliticaRisco.
+ * Responsável pelas operações de persistência e recuperação de regras de concessão e limites de crédito.
+ * Encapsula consultas temporais orientadas à vigência para assegurar a aplicação de parâmetros
+ * vigentes e o princípio da irretroatividade normativa em auditorias retroativas.
+ */
 public interface PoliticaRiscoRepository extends JpaRepository<PoliticaRisco, UUID> {
 
     // Lista todas da mais recente para a mais antiga

@@ -12,6 +12,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+/**
+ * Controller responsável pela exposição dos endpoints REST da entidade Restricao.
+ * Gerencia o registro de novos apontamentos de risco e inadimplências,
+ * operações de baixa de restrições via patch, e listagens flexíveis 
+ * (filtradas por cliente específico ou globais).
+ */
 @RestController
 @RequestMapping("/restricoes")
 @RequiredArgsConstructor

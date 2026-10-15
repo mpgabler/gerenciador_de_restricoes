@@ -13,21 +13,29 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-@RestController
-@RequestMapping("/clientes")
-@RequiredArgsConstructor
+
+/**
+ * Controller responsável pela exposição dos endpoints REST da entidade Cliente.
+ * Gerencia o ciclo de vida completo dos clientes (CRUD, paginação, exclusão lógica 
+ * via soft delete e reativação), aplicando validações de payload (@Valid) 
+ * e isolando o domínio através de DTOs.
+ */
+
+@RestController // controlador web focado em APIs REST - retorna dados convertidos em JSON
+@RequestMapping("/clientes") // rota base para todos os endpoints desta classe
+@RequiredArgsConstructor // anotação do Lombok para gerar automáticamente um construtor injetando o atributo private final ClienteService clienteService, evitando código repetitivo com @Autowired
 public class ClienteController {
 
     private final ClienteService clienteService;
 
     @PostMapping
-    public ResponseEntity<ClienteResponseDTO> cadastrar(@RequestBody @Valid ClienteRequestDTO dto) {
+    public ResponseEntity<ClienteResponseDTO> cadastrar(@RequestBody @Valid ClienteRequestDTO dto) { // @ResponseEntiity Focado na resposta, permitindo definir o código de status HTTP (200, 201, 404, etc.), os headers de retorno e o corpo JSON.
         ClienteResponseDTO response = clienteService.criar(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
-    public ResponseEntity<Page<ClienteResponseDTO>> listar(Pageable pageable) {
+    public ResponseEntity<Page<ClienteResponseDTO>> listar(Pageable pageable) { // 
         return ResponseEntity.ok(clienteService.listar(pageable));
     }
 

@@ -10,6 +10,14 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * Entidade JPA que mapeia a tabela 'restricoes' no PostgreSQL.
+ * Modela os apontamentos cadastrais e pendências financeiras dos clientes,
+ * vinculando o cliente ao respectivo tipo de restrição.
+ * Mantém valores monetários com alta precisão (BigDecimal), rastreia a data civil da 
+ * ocorrência para aferição cronológica de atrasos e irretroatividade temporal,
+ * além de gerenciar a transição de estado da restrição por meio do método de domínio darBaixa().
+ */
 @Entity
 @Table(name = "restricoes")
 @Getter

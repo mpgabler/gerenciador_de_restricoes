@@ -8,6 +8,14 @@ import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
+/**
+ * DTO de entrada (Request) implementado como record imutável para cadastro e parametrização de novas políticas de risco.
+ * Atua na fronteira da API REST como barreira defensiva contra vulnerabilidades de mass assignment,
+ * restringindo o payload aos parâmetros configuráveis pelo analista e isolando os metadados gerados
+ * internamente pelo servidor (versão sequencial, id universal, status e carimbos de vigência temporal).
+ * Utiliza Bean Validation (Jakarta) para assegurar a consistência dos limites financeiros monetários,
+ * prazos cronológicos e a obrigatoriedade de justificativa formal para fins de compliance e auditoria.
+ */
 public record PoliticaRiscoRequestDTO(
     @NotNull(message = "O teto de inadimplência é obrigatório")
     @Positive(message = "O teto de inadimplência deve ser maior que zero")

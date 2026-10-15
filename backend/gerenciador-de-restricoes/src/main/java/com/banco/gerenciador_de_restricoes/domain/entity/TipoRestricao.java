@@ -6,6 +6,15 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+
+/**
+ * Entidade JPA que mapeia a tabela 'tipos_restricao' no PostgreSQL.
+ * Define a taxonomia e as regras de parametrização para cada categoria de restrição
+ * (por exemplo: FRAUDE, INADIMPLENCIA, BLOQUEIO_JUDICIAL).
+ * É utilizada pelo motor de validação para verificar comportamentos específicos,
+ * tais como a obrigatoriedade de bloqueio imediato ou a aplicação de limites
+ * acumulados e tolerâncias temporais por tipo de apontamento.
+ */
 @Entity
 @Table(name = "tipos_restricao")
 @Getter

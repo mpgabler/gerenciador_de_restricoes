@@ -7,6 +7,12 @@ import com.banco.gerenciador_de_restricoes.domain.enums.TipoPessoa;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * DTO de saída (Response) implementado como record imutável para representação dos dados de um cliente.
+ * Atua na fronteira da API REST serializando dados cadastrais e metadados de auditoria gerados pelo servidor
+ * (UUID, status do ciclo de vida e carimbos de tempo com fuso horário), isolando a entidade JPA de domínio
+ * do cliente HTTP (frontend).
+ */
 public record ClienteResponseDTO(
     UUID id,
     String nome,
@@ -25,8 +31,8 @@ public record ClienteResponseDTO(
     OffsetDateTime dataCriacao,
     OffsetDateTime dataExclusao
 ) {
-    public static ClienteResponseDTO fromEntity(Cliente cliente) {
-        if (cliente == null) {
+    public static ClienteResponseDTO fromEntity(Cliente cliente) { // conversão Entity -> DTO
+        if (cliente == null) { // evita NullPointerException caso o registro seja inexistente 
             return null;
         }
 

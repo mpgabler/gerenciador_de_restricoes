@@ -16,6 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Camada de serviço responsável pelo ciclo de vida das restrições e apontamentos financeiros/cadastrais.
+ * Orquestra a inclusão de novas pendências, a resolução de tipos taxonômicos de restrição,
+ * a baixa/regularização de débitos e a emissão de relatórios/consultas vinculadas a clientes,
+ * assegurando que apontamentos não sejam atribuídos a clientes inativos.
+ */
 @Service
 @RequiredArgsConstructor
 public class RestricaoService {
@@ -24,6 +30,16 @@ public class RestricaoService {
     private final ClienteRepository clienteRepository;
     private final TipoRestricaoRepository tipoRestricaoRepository;
 
+    /**
+     * Registra uma nova restrição no sistema para o cliente informado.
+     * Valida a existência do cliente e bloqueia a operação caso o cadastro esteja inativo.
+     * Converte o código mnemônico textual na respectiva entidade TipoRestricao antes de persistir.
+     *
+     * @param dto Contrato de entrada com o ID do cliente, código da restrição, valor e data de ocorrência.
+     * @return DTO com os dados da restrição recém-criada (status ATIVA por padrão).
+     * @throws IllegalArgumentException se o cliente ou o tipo de restrição não forem localizados.
+     * @throws IllegalStateException    se o cliente estiver com status INATIVO.
+     */
     @Transactional
     public RestricaoResponseDTO criar(RestricaoRequestDTO dto) {
         Cliente cliente = clienteRepository.findById(dto.clienteId())
@@ -46,6 +62,15 @@ public class RestricaoService {
         return RestricaoResponseDTO.fromEntity(restricaoRepository.save(restricao));
     }
 
+    /**
+     * Efetua a baixa (regularização) de uma restrição ativa existente.
+     * Invoca o método de domínio restricao.darBaixa(), que transiciona o status para BAIXADA
+     * e carimba a data e hora do encerramento da pendência.
+     *
+     * @param restricaoId Identificador único universal (UUID) da restrição a ser baixada.
+     * @return DTO com o estado atualizado da restrição após a baixa.
+     * @throws IllegalArgumentException se a restrição não for encontrada.
+     */
     @Transactional
     public RestricaoResponseDTO darBaixa(UUID restricaoId) {
         Restricao restricao = restricaoRepository.findById(restricaoId)
@@ -55,6 +80,13 @@ public class RestricaoService {
         return RestricaoResponseDTO.fromEntity(restricaoRepository.save(restricao));
     }
 
+    /**
+     * Lista o histórico completo de restrições vinculadas a um cliente específico (ativas e baixadas).
+     *
+     * @param clienteId Identificador único universal (UUID) do cliente.
+     * @return Lista contendo as restrições convertidas em DTOs de resposta.
+     */
+    @Transactional(readOnly = true)
     public List<RestricaoResponseDTO> listarPorCliente(UUID clienteId) {
         return restricaoRepository.findByClienteId(clienteId)
                 .stream()
@@ -62,6 +94,12 @@ public class RestricaoService {
                 .toList();
     }
 
+    /**
+     * Recupera todas as restrições cadastradas na base de dados.
+     *
+     * @return Lista de todas as restrições persistidas mapeadas para DTO.
+     */
+    @Transactional(readOnly = true)
     public List<RestricaoResponseDTO> listarTodas() {
         return restricaoRepository.findAll()
                 .stream()

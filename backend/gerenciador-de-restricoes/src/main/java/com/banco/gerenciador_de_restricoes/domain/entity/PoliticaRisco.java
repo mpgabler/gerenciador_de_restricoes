@@ -7,6 +7,13 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+/**
+ * Entidade JPA que mapeia a tabela 'politicas_risco' no PostgreSQL.
+ * Representa os parâmetros normativos de crédito (teto financeiro e tolerância temporal de atraso),
+ * estruturados com controle de versionamento, intervalos de vigência (OffsetDateTime) e justificativa.
+ * Serve como base de consulta para o motor de decisão de risco, viabilizando auditoria de compliance
+ * e garantindo a aplicação do princípio de irretroatividade temporal nas validações de transações.
+ */
 @Entity
 @Table(name = "politicas_risco")
 @Getter

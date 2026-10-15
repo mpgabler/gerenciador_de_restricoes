@@ -11,6 +11,11 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Interface de acesso a dados (Data Access Layer) para a entidade Restricao.
+ * Responsável por executar operações de persistência e consultas direcionadas a apontamentos
+ * restritivos cadastrais e financeiros vinculados a clientes.
+ */
 @Repository
 public interface RestricaoRepository extends JpaRepository<Restricao, UUID> {
 

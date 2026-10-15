@@ -8,6 +8,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+/**
+ * Controller responsável por expor o endpoint REST do Motor de Decisão de Risco.
+ * Recebe o identificador único (UUID) de um cliente, aciona a lógica de validação 
+ * transacional (verificação de status, restrições ativas e tetos de inadimplência 
+ * sob regras irretroativas) e retorna o parecer técnico detalhado (LIBERADO ou BLOQUEADO).
+ */
 @RestController
 @RequestMapping("/valida-transacao")
 @RequiredArgsConstructor
