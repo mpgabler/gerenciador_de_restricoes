@@ -45,9 +45,9 @@ export const App: React.FC = () => {
       case 'relatorios':
         return 'Relatórios';
       case 'parametros':
-        return 'Definição de Parâmetros';
+        return 'Políticas de Crédito';
       default:
-        return 'Sistema Financeiro Bantestes';
+        return 'Sistema Financeiro Banestes';
     }
   };
 
