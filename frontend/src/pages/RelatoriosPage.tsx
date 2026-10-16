@@ -416,9 +416,9 @@ export const RelatoriosPage: React.FC = () => {
       {/* CABEÇALHO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="text-left">
-          <h2 className="font-poppins text-xl font-bold text-slate-800 tracking-tight">Relatórios & Inteligência de Risco</h2>
+          <h2 className="font-poppins text-xl font-bold text-slate-800 tracking-tight">Relatórios</h2>
           <p className="text-sm text-slate-500">
-            Painel analítico e auditoria de conformidade financeira das operações.
+            Painel de Relatórios.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
@@ -632,7 +632,7 @@ export const RelatoriosPage: React.FC = () => {
               <div>
                 <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">Registros Detalhados da Auditoria</h3>
                 <p className="text-sm text-slate-500">
-                  A exibir {restricoesPaginadas.length} de {restricoesFiltradas.length} apontamentos filtrados.
+                  Exibindo {restricoesPaginadas.length} de {restricoesFiltradas.length} apontamentos filtrados.
                 </p>
               </div>
             </div>

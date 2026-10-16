@@ -35,19 +35,19 @@ export const App: React.FC = () => {
   const getTitulo = () => {
     switch (activeTab) {
       case 'dashboard':
-        return 'Painel de Controle & Visão Geral';
+        return 'Painel de Controle';
       case 'validador':
-        return 'Motor de Decisão & Compliance';
+        return 'Avaliação de Risco';
       case 'clientes':
         return 'Gestão de Clientes';
       case 'restricoes':
-        return 'Gestão Global de Restrições';
+        return 'Gestão de Restrições';
       case 'relatorios':
-        return 'Relatórios & Inteligência de Risco';
+        return 'Relatórios';
       case 'parametros':
-        return 'Parâmetros & Políticas de Crédito';
+        return 'Definição de Parâmetros';
       default:
-        return 'Sistema Financeiro Banestes';
+        return 'Sistema Financeiro Bantestes';
     }
   };
 

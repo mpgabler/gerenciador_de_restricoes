@@ -118,7 +118,7 @@ export const ParametrosPage: React.FC = () => {
             Parâmetros &amp; Políticas de Crédito
           </h2>
           <p className="text-sm text-slate-500">
-            Definição de tetos normativos e versionamento com princípio de iretroatividade temporal.
+            Definição de tetos normativos.
           </p>
         </div>
       </div>
@@ -137,13 +137,10 @@ export const ParametrosPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
           <div>
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-poppins block">
-              Regra Vigente do Motor
+              Regra Vigente
             </span>
             <h3 className="text-lg font-bold text-[#14213D] font-poppins flex items-center gap-2">
-              Política Homologada ({politicaVigente?.versao || 'v1.0'})
-              <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-50 text-[#00874c] border border-emerald-200">
-                ATIVO EM PRODUÇÃO
-              </span>
+              Política de Crédito ({politicaVigente?.versao || 'v1.0'})
             </h3>
           </div>
           <span className="text-xs text-slate-500 font-mono">
@@ -161,11 +158,11 @@ export const ParametrosPage: React.FC = () => {
           </div>
 
           <div className="p-4.5 rounded-xl bg-slate-50 border border-slate-200">
-            <span className="text-xs text-slate-500 block font-poppins font-medium">Atraso Temporal Máximo</span>
+            <span className="text-xs text-slate-500 block font-poppins font-medium">Máximo Atraso de Dias Sem a Quitação</span>
             <span className="text-2xl font-extrabold text-amber-700 font-poppins block mt-1">
               {politicaVigente?.diasAtrasoMaximo || 90} dias
             </span>
-            <span className="text-[11px] text-slate-400 mt-1 block">Teto de tolerância cronológica de parcelas</span>
+            <span className="text-[11px] text-slate-400 mt-1 block">Teto de tolerância de parcelas atrasadas</span>
           </div>
         </div>
       </section>
@@ -177,7 +174,7 @@ export const ParametrosPage: React.FC = () => {
             Programar Nova Versão da Política
           </h3>
           <p className="text-xs text-slate-500">
-            Atualize os parâmetros normativos respeitando o princípio de conformidade e não-retroatividade.
+            Atualização de novos parâmetros normativos.
           </p>
         </div>
 
@@ -190,10 +187,10 @@ export const ParametrosPage: React.FC = () => {
           </div>
           <div>
             <h4 className="text-xs font-bold text-amber-900 font-poppins uppercase tracking-wide">
-              Cláusula de Iretroatividade Normativa
+              Atenção!
             </h4>
             <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
-              Transações e avaliações já registradas com datas anteriores à homologação <strong>não serão penalizadas e nem abonadas</strong>. O motor de decisão aplicará o novo corte exclusivamente a eventos e consultas realizados após a data/hora da nova versão.
+              Transações e avaliações já registradas com datas anteriores à homologação <strong>não serão penalizadas e nem abonadas</strong>. O sistema de decisão aplicará o novo corte exclusivamente a eventos e consultas realizados após a data/hora da nova versão.
             </p>
           </div>
         </div>
@@ -270,10 +267,10 @@ export const ParametrosPage: React.FC = () => {
       <section className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden text-left">
         <div className="p-6 border-b border-slate-200">
           <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
-            Trilha de Auditoria &amp; Versionamento Normativo
+            Versionamento das Normativas Aplicadas
           </h3>
           <p className="text-sm text-slate-500">
-            Registro histórico de todos os limites aplicados ao motor de conformidade.
+            Registro histórico de todos os limites aplicados.
           </p>
         </div>
 

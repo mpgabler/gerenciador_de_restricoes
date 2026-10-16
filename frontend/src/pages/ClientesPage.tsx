@@ -136,7 +136,7 @@ export const ClientesPage: React.FC<ClientesPageProps> = ({ onAvaliarCliente }) 
         <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="text-left">
             <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
-              Gestão de Clientes & Proponentes
+              Gestão de Clientes
             </h3>
             <p className="text-sm text-slate-500">
               Total:{' '}

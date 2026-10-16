@@ -309,10 +309,10 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
-              Consulta &amp; Validação Transacional
+               Cliente:
             </h3>
             <p className="text-xs text-slate-500">
-              Introduza o CPF ou CNPJ (numérico ou alfanumérico)
+              {/*Digite o CPF ou CNPJ (numérico ou alfanumérico)*/}
             </p>
           </div>
           {clienteAtual && (
@@ -417,7 +417,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
           </div>
           <h4 className="font-poppins text-base font-semibold text-slate-700">Aguardando Consulta</h4>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-            Introduza o CPF ou CNPJ no campo acima para exibir o histórico de ocorrências.
+            {/*Introduza o CPF ou CNPJ no campo acima para exibir o histórico de ocorrências.*/}
           </p>
         </section>
       )}
@@ -469,14 +469,14 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 </h4>
               </div>
             </div>
-            <span
+            {/*<span
               className={`px-3 py-1 text-xs font-semibold rounded-full border self-start md:self-auto font-poppins ${decisao.bloqueado
                   ? 'bg-red-100 text-red-800 border-red-300'
                   : 'bg-emerald-100 text-[#00874c] border-emerald-300'
                 }`}
             >
               Decisão Automática
-            </span>
+            </span>*/}
           </div>
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -535,7 +535,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 Histórico de Restrições Registradas
               </h3>
               <p className="text-sm text-slate-500">
-                Apontamentos para <strong className="text-[#081c30]">{clienteAtual.nome}</strong> (Total: {restricoes.length}).
+                Registros para <strong className="text-[#081c30]">{clienteAtual.nome}</strong> (Total: {restricoes.length}).
               </p>
             </div>
 

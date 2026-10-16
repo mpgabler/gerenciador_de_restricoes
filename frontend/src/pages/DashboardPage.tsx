@@ -138,7 +138,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             Visão geral do risco
           </h1>
           <p className="text-sm text-[#4A5875] mt-0.5">
-            Mesa de Risco &amp; Compliance · atualizado hoje, {formatarDataBR(new Date().toISOString())}
+            Atualizado hoje, {formatarDataBR(new Date().toISOString())}
           </p>
         </div>
 
@@ -148,7 +148,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             onClick={() => onNavigate('relatorios')}
             className="h-11 px-4.5 rounded-xl border border-[#CBD3E1] bg-white hover:bg-slate-50 text-[#14213D] text-sm font-semibold transition-all shadow-2xs font-poppins"
           >
-            Auditoria completa
+            Relatórios
           </button>
           <button
             type="button"
@@ -304,7 +304,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                   Ocorrências recentes
                 </h2>
                 <span className="text-xs text-[#4A5875]">
-                  Trilha de auditoria das regras aplicadas aos proponentes
+                  {/*Trilha de auditoria das regras aplicadas aos proponentes*/}
                 </span>
               </div>
 
@@ -428,7 +428,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               Composição do risco ativo
             </h2>
             <span className="text-xs text-[#4A5875]">
-              Restrições ativas que bloqueiam operações
+              Restrições ativas
             </span>
           </div>
 
