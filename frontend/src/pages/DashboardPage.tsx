@@ -4,7 +4,7 @@ import { restricaoService, type RestricaoResponseDTO } from '../services/restric
 import { clienteService, type Cliente } from '../services/clienteService';
 
 interface DashboardPageProps {
-  onNavigate: (tab: TabType, filtroStatus?: string) => void;
+  onNavigate: (tab: TabType, filtroStatus?: string, filtroTipo?: string) => void;
   onAvaliarCliente?: (clienteId: string) => void;
 }
 
@@ -28,13 +28,13 @@ export const formatarCpfCnpj = (valor: string): string => {
   if (!temLetra && limpo.length <= 11) {
     return limpo
       .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      .replace(/(\d{3})(\d)/, '$1.$2') .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
 
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2') .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
@@ -163,7 +163,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         </div>
       </header>
 
-      {/* 2. ALERT STRIP (QUANDO HOUVER BLOQUEIO JUDICIAL OU FRAUDE) */}
+      {/* 2. ALERT STRIP (DIRECIONA PARA RESTRIÇÕES COM FILTRO DE BLOQUEIO_JUDICIAL E ATIVA) */}
       {metricas.totalJudiciais > 0 && (
         <div
           role="status"
@@ -179,14 +179,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               <span className="text-sm font-bold text-[#7A1414] block font-poppins">
                 {metricas.totalJudiciais} {metricas.totalJudiciais === 1 ? 'bloqueio judicial exige' : 'bloqueios judiciais exigem'} ação imediata
               </span>
-              <span className="text-xs text-[#7A1414]/90 block">
-              </span>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => onNavigate('restricoes', 'ATIVA')}
-            className="px-3.5 py-1.5 text-xs font-bold text-[#8A1212] bg-white hover:bg-red-50 border border-[#D98C8C] rounded-lg transition-colors font-poppins shadow-2xs shrink-0"
+            onClick={() => onNavigate('restricoes', 'ATIVA', 'BLOQUEIO_JUDICIAL')}
+            className="px-3.5 py-1.5 text-xs font-bold text-[#8A1212] bg-white hover:bg-red-50 border border-[#D98C8C] rounded-lg transition-colors font-poppins shadow-2xs shrink-0 cursor-pointer"
           >
             Ver restrição
           </button>
@@ -291,7 +289,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
       {/* 4. ÁREA INFERIOR: TABELA DE OCORRÊNCIAS + COMPOSIÇÃO DO RISCO */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 text-left items-start">
-        {/* TABELA DE OCORRÊNCIAS RECENTES (SEM A COLUNA DE AÇÃO) */}
+        {/* TABELA DE OCORRÊNCIAS RECENTES */}
         <section
           aria-label="Ocorrências"
           className="lg:col-span-2 bg-white border border-[#DDE3EE] rounded-xl p-5 shadow-xs flex flex-col justify-between"
@@ -302,9 +300,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 <h2 className="text-base font-bold text-[#14213D] font-poppins">
                   Ocorrências recentes
                 </h2>
-                <span className="text-xs text-[#4A5875]">
-                  {/*Trilha de auditoria das regras aplicadas aos proponentes*/}
-                </span>
               </div>
 
               {/* FILTROS POR SITUAÇÃO */}
@@ -345,7 +340,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* TABELA DE 5 COLUNAS */}
+            {/* TABELA */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-[#14213D]">
                 <thead className="text-[11px] font-bold uppercase tracking-wider text-[#4A5875] border-b border-[#DDE3EE] font-poppins">
@@ -420,7 +415,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
         </section>
 
-        {/* COMPOSIÇÃO DO RISCO ATIVO (1 COLUNA) */}
+        {/* COMPOSIÇÃO DO RISCO ATIVO */}
         <section aria-label="Composição do risco" className="bg-white border border-[#DDE3EE] rounded-xl p-5 shadow-xs space-y-4">
           <div>
             <h2 className="text-base font-bold text-[#14213D] font-poppins">

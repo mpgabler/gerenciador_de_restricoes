@@ -14,21 +14,19 @@ export const App: React.FC = () => {
   const [sidebarRecolhida, setSidebarRecolhida] = useState<boolean>(false);
   const [clienteParaAvaliarId, setClienteParaAvaliarId] = useState<string | null>(null);
 
-  // Estado para armazenar o filtro inicial ao navegar para Restrições
+  // Estados para armazenar os filtros iniciais ao navegar para Restrições
   const [filtroStatusInicialRestricoes, setFiltroStatusInicialRestricoes] = useState<string>('TODOS');
+  const [filtroTipoInicialRestricoes, setFiltroTipoInicialRestricoes] = useState<string>('TODOS');
 
   const navegarParaAvaliacao = (clienteId: string) => {
     setClienteParaAvaliarId(clienteId);
     setActiveTab('validador');
   };
 
-  // Função de navegação com suporte a filtro pré-selecionado
-  const navegarParaAba = (aba: TabType, filtroStatus?: string) => {
-    if (filtroStatus) {
-      setFiltroStatusInicialRestricoes(filtroStatus);
-    } else {
-      setFiltroStatusInicialRestricoes('TODOS');
-    }
+  // Função de navegação com suporte a filtros pré-selecionados (Status e Tipo)
+  const navegarParaAba = (aba: TabType, filtroStatus?: string, filtroTipo?: string) => {
+    setFiltroStatusInicialRestricoes(filtroStatus || 'TODOS');
+    setFiltroTipoInicialRestricoes(filtroTipo || 'TODOS');
     setActiveTab(aba);
   };
 
@@ -56,8 +54,9 @@ export const App: React.FC = () => {
       <Sidebar
         activeTab={activeTab}
         onSelectTab={(tab) => {
-          // Ao mudar de aba pelo menu lateral, reseta o filtro inicial para o padrão
+          // Ao mudar de aba pelo menu lateral, reseta os filtros para o padrão
           setFiltroStatusInicialRestricoes('TODOS');
+          setFiltroTipoInicialRestricoes('TODOS');
           setActiveTab(tab);
         }}
         menuAbertoMobile={menuMobileAberto}
@@ -86,7 +85,10 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'restricoes' && (
-            <RestricoesPage statusInicial={filtroStatusInicialRestricoes} />
+            <RestricoesPage
+              statusInicial={filtroStatusInicialRestricoes}
+              tipoInicial={filtroTipoInicialRestricoes}
+            />
           )}
 
           {activeTab === 'relatorios' && (

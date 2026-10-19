@@ -6,6 +6,7 @@ import { ModalContatoRenegociacao } from '../components/modals/ModalContatoReneg
 
 interface RestricoesPageProps {
   statusInicial?: string;
+  tipoInicial?: string;
 }
 
 export const formatarCpfCnpj = (valor: string): string => {
@@ -15,13 +16,13 @@ export const formatarCpfCnpj = (valor: string): string => {
   if (!temLetra && limpo.length <= 11) {
     return limpo
       .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      .replace(/(\d{3})(\d)/, '$1.$2') .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
 
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2') .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
 // Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
@@ -36,11 +37,14 @@ export const formatarDataBR = (dataStr?: string | null): string => {
   return dataStr;
 };
 
-export const RestricoesPage: React.FC<RestricoesPageProps> = ({ statusInicial = 'TODOS' }) => {
+export const RestricoesPage: React.FC<RestricoesPageProps> = ({
+  statusInicial = 'TODOS',
+  tipoInicial = 'TODOS',
+}) => {
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busca, setBusca] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [filtroTipo, setFiltroTipo] = useState<string>(tipoInicial);
   const [filtroStatus, setFiltroStatus] = useState<string>(statusInicial);
   const [modalAberto, setModalAberto] = useState(false);
   const [carregando, setCarregando] = useState(false);
@@ -56,6 +60,13 @@ export const RestricoesPage: React.FC<RestricoesPageProps> = ({ statusInicial = 
       setFiltroStatus(statusInicial);
     }
   }, [statusInicial]);
+
+  // Sincroniza caso tipoInicial seja atualizado pela navegação do Dashboard
+  useEffect(() => {
+    if (tipoInicial) {
+      setFiltroTipo(tipoInicial);
+    }
+  }, [tipoInicial]);
 
   useEffect(() => {
     carregarDados();
@@ -215,7 +226,7 @@ export const RestricoesPage: React.FC<RestricoesPageProps> = ({ statusInicial = 
           <select
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
-            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] transition-all font-sans"
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] transition-all font-sans font-medium"
           >
             <option value="TODOS">Todos os Tipos</option>
             <option value="FRAUDE">Fraude</option>
@@ -226,7 +237,7 @@ export const RestricoesPage: React.FC<RestricoesPageProps> = ({ statusInicial = 
           <select
             value={filtroStatus}
             onChange={(e) => setFiltroStatus(e.target.value)}
-            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] transition-all font-sans"
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] transition-all font-sans font-medium"
           >
             <option value="TODOS">Todos os Status</option>
             <option value="ATIVA">Ativa</option>
@@ -325,7 +336,7 @@ export const RestricoesPage: React.FC<RestricoesPageProps> = ({ statusInicial = 
                             </svg>
                           </button>
 
-                          {/* BOTÃO DAR BAIXA / REGULARIZADA COM LARGURA RIGOROSA DE 102px */}
+                          {/* BOTÃO DAR BAIXA / REGULARIZADA */}
                           {isAtiva ? (
                             <button
                               onClick={() => handleDarBaixa(r.id)}
