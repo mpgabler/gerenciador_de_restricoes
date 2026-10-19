@@ -180,7 +180,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 {metricas.totalJudiciais} {metricas.totalJudiciais === 1 ? 'bloqueio judicial exige' : 'bloqueios judiciais exigem'} ação imediata
               </span>
               <span className="text-xs text-[#7A1414]/90 block">
-                Operações do proponente ficam impedidas até a regularização cadastral.
               </span>
             </div>
           </div>

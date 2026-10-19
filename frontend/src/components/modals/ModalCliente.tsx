@@ -8,12 +8,42 @@ interface ModalClienteProps {
   onSucesso: () => void;
 }
 
+// Lista oficial com todas as Unidades da Federação
+const ESTADOS_BRASIL = [
+  { sigla: 'AC', nome: 'Acre' },
+  { sigla: 'AL', nome: 'Alagoas' },
+  { sigla: 'AP', nome: 'Amapá' },
+  { sigla: 'AM', nome: 'Amazonas' },
+  { sigla: 'BA', nome: 'Bahia' },
+  { sigla: 'CE', nome: 'Ceará' },
+  { sigla: 'DF', nome: 'Distrito Federal' },
+  { sigla: 'ES', nome: 'Espírito Santo' },
+  { sigla: 'GO', nome: 'Goiás' },
+  { sigla: 'MA', nome: 'Maranhão' },
+  { sigla: 'MT', nome: 'Mato Grosso' },
+  { sigla: 'MS', nome: 'Mato Grosso do Sul' },
+  { sigla: 'MG', nome: 'Minas Gerais' },
+  { sigla: 'PA', nome: 'Pará' },
+  { sigla: 'PB', nome: 'Paraíba' },
+  { sigla: 'PR', nome: 'Paraná' },
+  { sigla: 'PE', nome: 'Pernambuco' },
+  { sigla: 'PI', nome: 'Piauí' },
+  { sigla: 'RJ', nome: 'Rio de Janeiro' },
+  { sigla: 'RN', nome: 'Rio Grande do Norte' },
+  { sigla: 'RS', nome: 'Rio Grande do Sul' },
+  { sigla: 'RO', nome: 'Rondônia' },
+  { sigla: 'RR', nome: 'Roraima' },
+  { sigla: 'SC', nome: 'Santa Catarina' },
+  { sigla: 'SP', nome: 'São Paulo' },
+  { sigla: 'SE', nome: 'Sergipe' },
+  { sigla: 'TO', nome: 'Tocantins' },
+];
+
 const formatarCpf = (valor: string): string => {
   const digitos = valor.replace(/\D/g, '').slice(0, 11);
   return digitos
     .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    .replace(/(\d{3})(\d)/, '$1.$2') .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 };
 
 const formatarCnpjAlfanumerico = (valor: string): string => {
@@ -21,8 +51,7 @@ const formatarCnpjAlfanumerico = (valor: string): string => {
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')
-    .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2') .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
 export const formatarTelefone = (valor: string): string => {
@@ -36,6 +65,8 @@ export const formatarTelefone = (valor: string): string => {
     .replace(/(\d{2})(\d)/, '($1) $2')
     .replace(/(\d{5})(\d)/, '$1-$2');
 };
+
+const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export const ModalCliente: React.FC<ModalClienteProps> = ({
   aberto,
@@ -60,6 +91,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentouSalvar, setTentouSalvar] = useState(false);
 
   const modoEdicao = Boolean(clienteParaEditar);
 
@@ -81,7 +113,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
         setComplemento(clienteParaEditar.complemento || '');
         setBairro(clienteParaEditar.bairro || '');
         setCidade(clienteParaEditar.cidade || '');
-        setUf(clienteParaEditar.uf || '');
+        setUf(clienteParaEditar.uf?.toUpperCase() || '');
         setCep(clienteParaEditar.cep || '');
       } else {
         setNome('');
@@ -99,6 +131,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
       }
       setErro(null);
       setSalvando(false);
+      setTentouSalvar(false);
     }
   }, [aberto, clienteParaEditar]);
 
@@ -126,9 +159,50 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
     }
   };
 
+  const campoVazio = (valor: string) => valor.trim() === '';
+  const emailValido = REGEX_EMAIL.test(email.trim());
+
+  const obterEstiloInput = (invalido: boolean, customFont: string = 'font-sans') => {
+    if (tentouSalvar && invalido) {
+      return `w-full px-3.5 py-2.5 bg-red-50/40 border border-red-400 text-red-900 rounded-xl text-xs placeholder-red-300 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 transition-all ${customFont}`;
+    }
+    return `w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all ${customFont}`;
+  };
+
+  const obterEstiloInputEndereco = (invalido: boolean) => {
+    if (tentouSalvar && invalido) {
+      return 'w-full px-3 py-2 bg-red-50/40 border border-red-400 text-red-900 rounded-lg text-xs placeholder-red-300 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 transition-all';
+    }
+    return 'w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTentouSalvar(true);
     setErro(null);
+
+    const camposObrigatoriosPreenchidos =
+      !campoVazio(nome) &&
+      !campoVazio(documento) &&
+      !campoVazio(email) &&
+      !campoVazio(telefone) &&
+      !campoVazio(logradouro) &&
+      !campoVazio(numero) &&
+      !campoVazio(complemento) &&
+      !campoVazio(bairro) &&
+      !campoVazio(cidade) &&
+      !campoVazio(uf) &&
+      !campoVazio(cep);
+
+    if (!camposObrigatoriosPreenchidos) {
+      setErro('Por favor, preencha todos os campos destacados em vermelho.');
+      return;
+    }
+
+    if (!emailValido) {
+      setErro('Por favor, informe um endereço de e-mail válido (ex.: usuario@dominio.com).');
+      return;
+    }
 
     const docLimpo = documento.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
@@ -143,12 +217,11 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
     setSalvando(true);
 
-    // Constrói o payload enviando string vazia ou valores limpos
     const payload: any = {
       nome: nome.trim(),
       documento: docLimpo,
       tipoPessoa,
-      email: email.trim() ? email.trim() : '',
+      email: email.trim(),
       telefone: telefone.replace(/\D/g, '').trim(),
       logradouro: logradouro.trim(),
       numero: numero.trim(),
@@ -171,10 +244,16 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
     } catch (err: any) {
       console.error('Falha ao salvar cliente:', err);
       const data = err.response?.data;
-      const msg =
-        data?.message ||
-        data?.error ||
-        'Erro ao registrar cliente. Verifique se os dados estão preenchidos corretamente.';
+
+      let msg = 'Erro ao registrar cliente. Verifique se os dados estão preenchidos corretamente.';
+      if (data?.errors && Array.isArray(data.errors)) {
+        msg = data.errors.map((e: any) => e.defaultMessage || e).join('; ');
+      } else if (data?.message) {
+        msg = data.message;
+      } else if (data?.error) {
+        msg = data.error;
+      }
+
       setErro(msg);
     } finally {
       setSalvando(false);
@@ -192,7 +271,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
               {modoEdicao ? 'Atualizar Dados do Proponente' : 'Novo Cliente'}
             </h3>
             <p className="text-xs text-slate-500">
-              Dados cadastrais e canais de contato para negociação no Banestes.
+              Dados cadastrais e canais de contato
             </p>
           </div>
           <button onClick={onFechar} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors">
@@ -202,27 +281,36 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-left">
+        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-4 text-left">
           {erro && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-lg">
-              {erro}
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+              <svg className="w-4 h-4 shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{erro}</span>
             </div>
           )}
 
+          {/* Nome Completo / Razão Social */}
           <div>
             <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
               {tipoPessoa === 'PJ' ? 'Razão Social / Nome Fantasia' : 'Nome Completo'} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              required
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               placeholder={tipoPessoa === 'PJ' ? 'Ex.: Comercial Vitória LTDA' : 'Ex.: Maria Souza'}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-sans"
+              className={obterEstiloInput(campoVazio(nome))}
             />
+            {tentouSalvar && campoVazio(nome) && (
+              <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                Preenchimento obrigatório
+              </span>
+            )}
           </div>
 
+          {/* Tipo e Documento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
@@ -244,19 +332,24 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
               </label>
               <input
                 type="text"
-                required
                 value={documento}
                 onChange={lidarComMudancaDocumento}
                 placeholder={tipoPessoa === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono tracking-wide"
+                className={obterEstiloInput(campoVazio(documento), 'font-mono tracking-wide')}
               />
+              {tentouSalvar && campoVazio(documento) && (
+                <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                  Preenchimento obrigatório
+                </span>
+              )}
             </div>
           </div>
 
+          {/* Telefone e E-mail */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-                Telefone / WhatsApp (Negociação)
+                Telefone / WhatsApp (Negociação) <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -264,21 +357,36 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
                 value={telefone}
                 onChange={(e) => setTelefone(formatarTelefone(e.target.value))}
                 placeholder="(27) 99999-9999"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono"
+                className={obterEstiloInput(campoVazio(telefone), 'font-mono')}
               />
+              {tentouSalvar && campoVazio(telefone) && (
+                <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                  Preenchimento obrigatório
+                </span>
+              )}
             </div>
 
             <div>
               <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-                E-mail
+                E-mail <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="cliente@dominio.com.br"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-sans"
+                className={obterEstiloInput(campoVazio(email) || !emailValido)}
               />
+              {tentouSalvar && campoVazio(email) && (
+                <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                  Preenchimento obrigatório
+                </span>
+              )}
+              {tentouSalvar && !campoVazio(email) && !emailValido && (
+                <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                  Informe um e-mail válido (ex.: usuario@dominio.com)
+                </span>
+              )}
             </div>
           </div>
 
@@ -288,93 +396,135 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
               Endereço Residencial / Comercial
             </h4>
 
+            {/* Logradouro e Número */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
               <div className="sm:col-span-2">
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  Logradouro (Rua, Av.)
+                  Logradouro (Rua, Av.) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={logradouro}
                   onChange={(e) => setLogradouro(e.target.value)}
                   placeholder="Ex.: Av. Princesa Isabel"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+                  className={obterEstiloInputEndereco(campoVazio(logradouro))}
                 />
+                {tentouSalvar && campoVazio(logradouro) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Preenchimento obrigatório
+                  </span>
+                )}
               </div>
 
               <div>
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  Número
+                  Número <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={numero}
                   onChange={(e) => setNumero(e.target.value)}
                   placeholder="Ex.: 574"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+                  className={obterEstiloInputEndereco(campoVazio(numero))}
                 />
+                {tentouSalvar && campoVazio(numero) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Preenchimento obrigatório
+                  </span>
+                )}
               </div>
             </div>
 
+            {/* Complemento e Bairro */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  Complemento
+                  Complemento <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={complemento}
                   onChange={(e) => setComplemento(e.target.value)}
                   placeholder="Ex.: Apto 302, Bloco B"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+                  className={obterEstiloInputEndereco(campoVazio(complemento))}
                 />
+                {tentouSalvar && campoVazio(complemento) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Preenchimento obrigatório
+                  </span>
+                )}
               </div>
 
               <div>
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  Bairro
+                  Bairro <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={bairro}
                   onChange={(e) => setBairro(e.target.value)}
                   placeholder="Ex.: Centro"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+                  className={obterEstiloInputEndereco(campoVazio(bairro))}
                 />
+                {tentouSalvar && campoVazio(bairro) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Preenchimento obrigatório
+                  </span>
+                )}
               </div>
             </div>
 
+            {/* Cidade, UF (Seletor com Estados) e CEP */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  Cidade
+                  Cidade <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={cidade}
                   onChange={(e) => setCidade(e.target.value)}
                   placeholder="Ex.: Vitória"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+                  className={obterEstiloInputEndereco(campoVazio(cidade))}
                 />
+                {tentouSalvar && campoVazio(cidade) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Preenchimento obrigatório
+                  </span>
+                )}
               </div>
 
+              {/* Seletor de Estados (UF) */}
               <div>
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  UF
+                  UF <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  maxLength={2}
+                <select
                   value={uf}
-                  onChange={(e) => setUf(e.target.value.toUpperCase())}
-                  placeholder="ES"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all uppercase"
-                />
+                  onChange={(e) => setUf(e.target.value)}
+                  className={
+                    tentouSalvar && campoVazio(uf)
+                      ? 'w-full px-2.5 py-2 bg-red-50/40 border border-red-400 text-red-900 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 transition-all'
+                      : 'w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all'
+                  }
+                >
+                  <option value="">UF</option>
+                  {ESTADOS_BRASIL.map((estado) => (
+                    <option key={estado.sigla} value={estado.sigla}>
+                      {estado.sigla} - {estado.nome}
+                    </option>
+                  ))}
+                </select>
+                {tentouSalvar && campoVazio(uf) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Obrigatório
+                  </span>
+                )}
               </div>
 
               <div>
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-                  CEP
+                  CEP <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -386,8 +536,17 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
                     setCep(formatado);
                   }}
                   placeholder="29010-904"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono"
+                  className={
+                    tentouSalvar && campoVazio(cep)
+                      ? 'w-full px-3 py-2 bg-red-50/40 border border-red-400 text-red-900 rounded-lg text-xs placeholder-red-300 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 transition-all font-mono'
+                      : 'w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-mono'
+                  }
                 />
+                {tentouSalvar && campoVazio(cep) && (
+                  <span className="text-[10px] text-red-600 font-medium mt-1 block">
+                    Obrigatório
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -403,7 +562,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
             </button>
             <button
               type="submit"
-              disabled={salvando || !nome.trim() || !documento.trim()}
+              disabled={salvando}
               className="px-5 py-2 bg-[#004b87] hover:bg-[#003a6b] text-white rounded-xl text-xs font-semibold font-poppins transition-all shadow-xs disabled:opacity-50 active:scale-[0.99] flex items-center gap-1.5"
             >
               {salvando ? (

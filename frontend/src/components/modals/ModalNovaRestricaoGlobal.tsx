@@ -21,7 +21,6 @@ const obterDataHojeLocal = (): string => {
 // Converte texto numérico em formato moeda BR (Ex: "5000" ou "5000.5" -> "5.000,50")
 const formatarParaMoedaBR = (valorStr: string): string => {
   if (!valorStr.trim()) return '';
-  // Normaliza substituindo vírgula por ponto para parse
   const normalizado = valorStr.replace(/\./g, '').replace(',', '.');
   const numero = parseFloat(normalizado);
   if (isNaN(numero)) return valorStr;
@@ -35,7 +34,6 @@ const formatarParaMoedaBR = (valorStr: string): string => {
 // Converte string formatada (Ex: "5.000,00") para número float aceito pelo backend (Ex: 5000.00)
 const converterMoedaParaNumero = (valorStr: string): number => {
   if (!valorStr.trim()) return 0;
-  // Remove separadores de milhar e troca vírgula decimal por ponto
   const limpo = valorStr.replace(/\./g, '').replace(',', '.');
   const num = parseFloat(limpo);
   return isNaN(num) ? 0 : num;
@@ -53,7 +51,7 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
   const [buscaCliente, setBuscaCliente] = useState<string>('');
   const [dropdownAberto, setDropdownAberto] = useState<boolean>(false);
 
-  const [tipoCodigo, setTipoCodigo] = useState<string>('INADIMPLENCIA');
+  const [tipoCodigo, setTipoCodigo] = useState<'INADIMPLENCIA' | 'FRAUDE' | 'BLOQUEIO_JUDICIAL'>('INADIMPLENCIA');
   const [valor, setValor] = useState<string>('');
   const [dataOcorrencia, setDataOcorrencia] = useState<string>(hoje);
   const [salvando, setSalvando] = useState<boolean>(false);
@@ -132,13 +130,25 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
     setSalvando(true);
     setErro(null);
 
-    const valorNumerico = tipoCodigo === 'INADIMPLENCIA' ? converterMoedaParaNumero(valor) : null;
+    // CORREÇÃO DO BAD REQUEST: Fraude e Bloqueio Judicial sem valor enviam 0 (número), NUNCA null
+    let valorNumerico = 0;
+    if (tipoCodigo === 'INADIMPLENCIA') {
+      valorNumerico = converterMoedaParaNumero(valor);
+      if (valorNumerico <= 0) {
+        setErro('Para Inadimplência, informe um valor monetário maior que zero.');
+        setSalvando(false);
+        return;
+      }
+    } else if (tipoCodigo === 'BLOQUEIO_JUDICIAL') {
+      valorNumerico = valor.trim() ? converterMoedaParaNumero(valor) : 0;
+    } else {
+      valorNumerico = 0; // FRAUDE sempre tem valor numérico 0
+    }
 
-    const payload: any = {
+    const payload = {
       clienteId: clienteSelecionado.id,
       tipoRestricaoCodigo: tipoCodigo,
-      tipoCodigo: tipoCodigo,
-      valor: valorNumerico,
+      valor: valorNumerico, // Sempre numérico, satisfazendo o @NotNull BigDecimal do Spring Boot
       dataOcorrencia,
     };
 
@@ -271,27 +281,36 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
             )}
           </div>
 
-          {/* 2. TIPO DE RESTRIÇÃO */}
+          {/* 2. TIPO DE RESTRIÇÃO (CORRIGIDO: SisbaJud e enums oficiais) */}
           <div>
             <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
               Tipo de Restrição
             </label>
             <select
               value={tipoCodigo}
-              onChange={(e) => setTipoCodigo(e.target.value)}
+              onChange={(e) => {
+                const novoTipo = e.target.value as any;
+                setTipoCodigo(novoTipo);
+                if (novoTipo === 'FRAUDE') setValor('');
+              }}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
             >
               <option value="INADIMPLENCIA">Inadimplência Financeira</option>
               <option value="FRAUDE">Suspeita / Fraude Identificada</option>
-              <option value="BLOQUEIO_JUDICIAL">Bloqueio Judicial / BacenJud</option>
+              <option value="BLOQUEIO_JUDICIAL">Bloqueio Judicial / SisbaJud</option>
             </select>
           </div>
 
-          {/* 3. VALOR FORMATADO COM VÍRGULA NO BLUR */}
-          {tipoCodigo === 'INADIMPLENCIA' && (
+          {/* 3. VALOR (EXIBIDO PARA INADIMPLÊNCIA E BLOQUEIO JUDICIAL) */}
+          {tipoCodigo !== 'FRAUDE' && (
             <div>
               <label className="block text-xs font-poppins font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-                Valor do Débito (R$)
+                Valor do Débito (R$){' '}
+                {tipoCodigo === 'INADIMPLENCIA' ? (
+                  <span className="text-red-500">*</span>
+                ) : (
+                  <span className="text-slate-400 font-normal lowercase">(opcional para indisponibilidade genérica)</span>
+                )}
               </label>
               <div className="relative flex items-center">
                 <span className="absolute left-3.5 text-xs text-slate-400 font-semibold pointer-events-none">
@@ -302,20 +321,17 @@ export const ModalNovaRestricaoGlobal: React.FC<ModalNovaRestricaoGlobalProps> =
                   inputMode="decimal"
                   value={valor}
                   onFocus={() => {
-                    // Ao focar, retira pontuações para facilitar edição rápida
                     if (valor) {
                       const num = converterMoedaParaNumero(valor);
                       setValor(num > 0 ? String(num) : '');
                     }
                   }}
                   onBlur={() => {
-                    // Ao sair do foco, aplica formatação pt-BR com vírgula e 2 casas
                     if (valor) {
                       setValor(formatarParaMoedaBR(valor));
                     }
                   }}
                   onChange={(e) => {
-                    // Permite números, vírgula e ponto durante a digitação
                     const val = e.target.value.replace(/[^0-9.,]/g, '');
                     setValor(val);
                   }}

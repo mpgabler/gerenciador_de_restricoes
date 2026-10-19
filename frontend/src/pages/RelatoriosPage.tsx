@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { restricaoService, type RestricaoResponseDTO } from '../services/restricaoService';
 import { clienteService, type Cliente } from '../services/clienteService';
+import { politicaService, type PoliticaRiscoDTO } from '../services/politicaService';
 
-type CampoOrdenacao = 'clienteNome' | 'tipoCodigo' | 'valor' | 'dataOcorrencia' | 'status';
+type CampoOrdenacao = 'clienteNome' | 'tipoCodigo' | 'valor' | 'dataOcorrencia' | 'status' | 'situacaoRisco';
 
 export const formatarCpfCnpj = (valor: string): string => {
   const limpo = (valor || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 14);
@@ -11,16 +12,17 @@ export const formatarCpfCnpj = (valor: string): string => {
   if (!temLetra && limpo.length <= 11) {
     return limpo
       .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
 
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')     .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')
+    .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
-// Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
 export const formatarDataBR = (dataStr?: string | null): string => {
   if (!dataStr) return '—';
   const limpo = dataStr.split('T')[0];
@@ -32,15 +34,23 @@ export const formatarDataBR = (dataStr?: string | null): string => {
   return dataStr;
 };
 
+interface RestricaoAuditada extends RestricaoResponseDTO {
+  bloqueante: boolean;
+  motivoBloqueio?: string;
+}
+
 export const RelatoriosPage: React.FC = () => {
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [politicas, setPoliticas] = useState<PoliticaRiscoDTO[]>([]);
   const [carregando, setCarregando] = useState<boolean>(true);
 
-  // 1. Estados de Filtros e Busca
+  // 1. Estados de Filtros e Busca (Status Operacional padrão definido como 'ATIVA')
   const [busca, setBusca] = useState<string>('');
+  const [tipoPessoaFiltro, setTipoPessoaFiltro] = useState<string>('TODOS');
   const [tipoFiltro, setTipoFiltro] = useState<string>('TODOS');
-  const [statusFiltro, setStatusFiltro] = useState<string>('TODOS');
+  const [statusFiltro, setStatusFiltro] = useState<string>('ATIVA');
+  const [bloqueioFiltro, setBloqueioFiltro] = useState<string>('TODOS');
   const [dataInicio, setDataInicio] = useState<string>('');
   const [dataFim, setDataFim] = useState<string>('');
   const [atalhoAtivo, setAtalhoAtivo] = useState<string>('todos');
@@ -58,9 +68,10 @@ export const RelatoriosPage: React.FC = () => {
   const carregarDados = async () => {
     setCarregando(true);
     try {
-      const [resRestricoes, resClientes] = await Promise.all([
+      const [resRestricoes, resClientes, resPoliticas] = await Promise.all([
         restricaoService.listarTodas ? restricaoService.listarTodas().catch(() => []) : Promise.resolve([]),
         clienteService.listarTodos().catch(() => []),
+        politicaService.listarTodas().catch(() => []),
       ]);
 
       const listaRestricoes: RestricaoResponseDTO[] = Array.isArray(resRestricoes)
@@ -77,10 +88,12 @@ export const RelatoriosPage: React.FC = () => {
 
       setRestricoes(listaRestricoes);
       setClientes(listaClientes);
+      setPoliticas(Array.isArray(resPoliticas) ? resPoliticas : []);
     } catch (e) {
       console.error('Falha ao carregar relatórios:', e);
       setRestricoes([]);
       setClientes([]);
+      setPoliticas([]);
     } finally {
       setCarregando(false);
     }
@@ -89,7 +102,6 @@ export const RelatoriosPage: React.FC = () => {
   const listaSeguraClientes = useMemo(() => (Array.isArray(clientes) ? clientes : []), [clientes]);
   const listaSeguraRestricoes = useMemo(() => (Array.isArray(restricoes) ? restricoes : []), [restricoes]);
 
-  // Mapeamento rápido de clientes por ID e por Nome
   const mapaClientes = useMemo(() => {
     const map = new Map<string, Cliente>();
     listaSeguraClientes.forEach((c) => {
@@ -120,7 +132,138 @@ export const RelatoriosPage: React.FC = () => {
     );
   };
 
-  // Atalhos rápidos de data
+  // Identifica se o cliente do apontamento é Pessoa Física ou Jurídica
+  const obterTipoPessoaCliente = (r: RestricaoResponseDTO): 'PF' | 'PJ' => {
+    const cliente =
+      (r?.clienteId ? mapaClientes.get(r.clienteId) : undefined) ||
+      (r?.clienteNome ? mapaClientesPorNome.get(r.clienteNome.trim().toLowerCase()) : undefined);
+
+    if (cliente?.tipoPessoa) {
+      return cliente.tipoPessoa;
+    }
+
+    const docLimpo = obterDocCliente(r).replace(/[^a-zA-Z0-9]/g, '');
+    return docLimpo.length > 11 ? 'PJ' : 'PF';
+  };
+
+  // Desabilita Situação de Risco quando a restrição tem bloqueio mandatório/compulsório
+  const situacaoRiscoDesabilitada = tipoFiltro === 'FRAUDE' || tipoFiltro === 'BLOQUEIO_JUDICIAL';
+
+  const opcoesSituacaoRisco = useMemo(() => {
+    if (tipoFiltro === 'FRAUDE') {
+      return [{ valor: 'TODOS', label: 'Bloqueio Compulsório (Automático)' }];
+    }
+    if (tipoFiltro === 'BLOQUEIO_JUDICIAL') {
+      return [{ valor: 'TODOS', label: 'Bloqueio Mandatório (Judicial)' }];
+    }
+    if (tipoFiltro === 'INADIMPLENCIA') {
+      return [
+        { valor: 'TODOS', label: 'Todas as Inadimplências' },
+        { valor: 'BLOQUEIO_INADIMPLENCIA', label: 'Bloqueante (Excede Teto / Prazo)' },
+        { valor: 'TOLERADO', label: 'Dentro do Limite Tolerado' },
+      ];
+    }
+    return [
+      { valor: 'TODOS', label: 'Todas as Situações' },
+      { valor: 'BLOQUEIO_INADIMPLENCIA', label: 'Bloqueio p/ Inadimplência' },
+      { valor: 'TOLERADO', label: 'Dentro do Limite Tolerado' },
+      { valor: 'BLOQUEIO_CRITICO', label: 'Bloqueio Crítico (Fraude / Judicial)' },
+    ];
+  }, [tipoFiltro]);
+
+  const lidarMudancaTipoFiltro = (novoTipo: string) => {
+    setTipoFiltro(novoTipo);
+    setBloqueioFiltro('TODOS');
+    setPaginaAtual(1);
+  };
+
+  // Motor analítico que enriquece os registros para auditoria
+  const restricoesAuditadas = useMemo<RestricaoAuditada[]>(() => {
+    const agora = new Date();
+    const politicaPadrao = politicas.find((p) => p.ativo) || politicas[0] || {
+      tetoInadimplencia: 5000,
+      diasAtrasoMaximo: 90,
+      versao: 'v1.0',
+      vigenciaInicio: '2026-01-01',
+    };
+
+    const acumuladoAtivoPorCliente = new Map<string, number>();
+    listaSeguraRestricoes.forEach((r) => {
+      if (r.status === 'ATIVA' && r.tipoCodigo === 'INADIMPLENCIA') {
+        const idKey = r.clienteId || r.clienteNome || 'unknown';
+        const valorAtual = acumuladoAtivoPorCliente.get(idKey) || 0;
+        acumuladoAtivoPorCliente.set(idKey, valorAtual + (Number(r.valor) || 0));
+      }
+    });
+
+    return listaSeguraRestricoes.map((r) => {
+      if (r.tipoCodigo === 'FRAUDE') {
+        return {
+          ...r,
+          bloqueante: true,
+          motivoBloqueio: r.status === 'BAIXADA' ? 'Fraude Regularizada/Baixada' : 'Bloqueio Compulsório por Fraude',
+        };
+      }
+
+      if (r.tipoCodigo === 'BLOQUEIO_JUDICIAL') {
+        return {
+          ...r,
+          bloqueante: true,
+          motivoBloqueio: r.status === 'BAIXADA' ? 'Bloqueio Judicial Baixado' : 'Bloqueio Judicial Mandatório',
+        };
+      }
+
+      if (r.tipoCodigo === 'INADIMPLENCIA') {
+        const partesData = (r.dataOcorrencia || '').split('T')[0].split('-');
+        let dataOcorr: Date;
+        if (partesData.length === 3) {
+          dataOcorr = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 23, 59, 59);
+        } else {
+          dataOcorr = new Date(r.dataOcorrencia || agora);
+        }
+
+        const politicaDaEpoca = politicas.find((p) => {
+          const inicio = new Date(p.vigenciaInicio);
+          const fim = p.vigenciaFim ? new Date(p.vigenciaFim) : new Date(8640000000000000);
+          return dataOcorr >= inicio && dataOcorr <= fim;
+        }) || politicaPadrao;
+
+        const diffTempo = agora.getTime() - dataOcorr.getTime();
+        const diasAtraso = Math.max(0, Math.floor(diffTempo / (1000 * 60 * 60 * 24)));
+        const idKey = r.clienteId || r.clienteNome || 'unknown';
+
+        const valorAvaliado = r.status === 'ATIVA'
+          ? (acumuladoAtivoPorCliente.get(idKey) || Number(r.valor) || 0)
+          : (Number(r.valor) || 0);
+
+        const excedeTeto = valorAvaliado > politicaDaEpoca.tetoInadimplencia;
+        const excedePrazo = diasAtraso > politicaDaEpoca.diasAtrasoMaximo;
+        const eBloqueante = excedeTeto || excedePrazo;
+
+        let detalhe = 'Dentro do limite tolerado da política';
+        if (excedeTeto && excedePrazo) {
+          detalhe = `Excede Teto (R$ ${politicaDaEpoca.tetoInadimplencia.toLocaleString('pt-BR')}) e Prazo (${politicaDaEpoca.diasAtrasoMaximo}d)`;
+        } else if (excedeTeto) {
+          detalhe = `Excede Teto de R$ ${politicaDaEpoca.tetoInadimplencia.toLocaleString('pt-BR')}`;
+        } else if (excedePrazo) {
+          detalhe = `Atraso (${diasAtraso}d) excede tolerância de ${politicaDaEpoca.diasAtrasoMaximo}d`;
+        }
+
+        if (r.status === 'BAIXADA') {
+          detalhe = `${detalhe} (Baixada)`;
+        }
+
+        return {
+          ...r,
+          bloqueante: eBloqueante,
+          motivoBloqueio: detalhe,
+        };
+      }
+
+      return { ...r, bloqueante: false, motivoBloqueio: 'Sem restrição impeditiva' };
+    });
+  }, [listaSeguraRestricoes, politicas]);
+
   const aplicarAtalhoPeriodo = (atalho: 'todos' | 'hoje' | '7dias' | 'mes' | 'ano') => {
     setAtalhoAtivo(atalho);
     const hoje = new Date();
@@ -134,13 +277,11 @@ export const RelatoriosPage: React.FC = () => {
       setDataFim('');
       return;
     }
-
     if (atalho === 'hoje') {
       setDataInicio(hojeFormatado);
       setDataFim(hojeFormatado);
       return;
     }
-
     if (atalho === '7dias') {
       const d7 = new Date();
       d7.setDate(hoje.getDate() - 7);
@@ -151,13 +292,11 @@ export const RelatoriosPage: React.FC = () => {
       setDataFim(hojeFormatado);
       return;
     }
-
     if (atalho === 'mes') {
       setDataInicio(`${ano}-${mes}-01`);
       setDataFim(hojeFormatado);
       return;
     }
-
     if (atalho === 'ano') {
       setDataInicio(`${ano}-01-01`);
       setDataFim(hojeFormatado);
@@ -167,20 +306,22 @@ export const RelatoriosPage: React.FC = () => {
 
   const limparFiltros = () => {
     setBusca('');
+    setTipoPessoaFiltro('TODOS');
     setTipoFiltro('TODOS');
-    setStatusFiltro('TODOS');
+    setStatusFiltro('ATIVA'); // Retorna ao padrão "Ativa"
+    setBloqueioFiltro('TODOS');
     setDataInicio('');
     setDataFim('');
     setAtalhoAtivo('todos');
     setPaginaAtual(1);
   };
 
-  // Filtragem combinada resiliente
+  // Filtragem combinada resiliente com suporte ao tipo PF/PJ
   const restricoesFiltradas = useMemo(() => {
     const termoBusca = busca.trim().toLowerCase();
     const termoAlfanumerico = busca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
-    return listaSeguraRestricoes.filter((r) => {
+    return restricoesAuditadas.filter((r) => {
       if (!r) return false;
       const documentoCliente = obterDocCliente(r);
       const docLimpo = documentoCliente.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -195,23 +336,42 @@ export const RelatoriosPage: React.FC = () => {
       const atendeTipo = tipoFiltro === 'TODOS' || r.tipoCodigo === tipoFiltro;
       const atendeStatus = statusFiltro === 'TODOS' || r.status === statusFiltro;
 
+      // Filtro de Pessoa Física (PF) / Pessoa Jurídica (PJ)
+      const tipoPessoa = obterTipoPessoaCliente(r);
+      const atendeTipoPessoa = tipoPessoaFiltro === 'TODOS' || tipoPessoa === tipoPessoaFiltro;
+
+      // Filtro de Situação de Risco
+      let atendeBloqueio = true;
+      if (!situacaoRiscoDesabilitada) {
+        if (bloqueioFiltro === 'BLOQUEIO_INADIMPLENCIA') {
+          atendeBloqueio = r.tipoCodigo === 'INADIMPLENCIA' && r.bloqueante;
+        } else if (bloqueioFiltro === 'BLOQUEIO_CRITICO') {
+          atendeBloqueio = r.tipoCodigo === 'FRAUDE' || r.tipoCodigo === 'BLOQUEIO_JUDICIAL';
+        } else if (bloqueioFiltro === 'TOLERADO') {
+          atendeBloqueio = r.tipoCodigo === 'INADIMPLENCIA' && !r.bloqueante;
+        }
+      }
+
       let atendeData = true;
       if (dataInicio && r.dataOcorrencia && r.dataOcorrencia < dataInicio) atendeData = false;
       if (dataFim && r.dataOcorrencia && r.dataOcorrencia > dataFim) atendeData = false;
 
-      return atendeBusca && atendeTipo && atendeStatus && atendeData;
+      return atendeBusca && atendeTipoPessoa && atendeTipo && atendeStatus && atendeBloqueio && atendeData;
     });
-  }, [listaSeguraRestricoes, mapaClientes, mapaClientesPorNome, busca, tipoFiltro, statusFiltro, dataInicio, dataFim]);
+  }, [restricoesAuditadas, mapaClientes, mapaClientesPorNome, busca, tipoPessoaFiltro, tipoFiltro, statusFiltro, bloqueioFiltro, situacaoRiscoDesabilitada, dataInicio, dataFim]);
 
   // Ordenação dinâmica
   const restricoesOrdenadas = useMemo(() => {
     return [...restricoesFiltradas].sort((a, b) => {
-      let valorA: any = a[campoOrdenacao];
-      let valorB: any = b[campoOrdenacao];
+      let valorA: any = a[campoOrdenacao as keyof RestricaoAuditada];
+      let valorB: any = b[campoOrdenacao as keyof RestricaoAuditada];
 
       if (campoOrdenacao === 'valor') {
         valorA = a.valor || 0;
         valorB = b.valor || 0;
+      } else if (campoOrdenacao === 'situacaoRisco') {
+        valorA = a.bloqueante ? 1 : 0;
+        valorB = b.bloqueante ? 1 : 0;
       } else {
         valorA = (valorA || '').toString().toLowerCase();
         valorB = (valorB || '').toString().toLowerCase();
@@ -223,7 +383,6 @@ export const RelatoriosPage: React.FC = () => {
     });
   }, [restricoesFiltradas, campoOrdenacao, ordemAsc]);
 
-  // Paginação
   const totalPaginas = Math.ceil(restricoesOrdenadas.length / itensPorPagina) || 1;
   const restricoesPaginadas = useMemo(() => {
     const inicio = (paginaAtual - 1) * itensPorPagina;
@@ -249,6 +408,12 @@ export const RelatoriosPage: React.FC = () => {
     .filter((r) => r?.tipoCodigo === 'INADIMPLENCIA')
     .reduce((acc, r) => acc + (r?.valor || 0), 0);
 
+  const bloqueiosInadimplencia = restricoesFiltradas.filter(
+    (r) => r?.tipoCodigo === 'INADIMPLENCIA' && r.bloqueante
+  );
+  const totalBloqueiosInadimplencia = bloqueiosInadimplencia.length;
+  const volumeBloqueadoInadimplencia = bloqueiosInadimplencia.reduce((acc, r) => acc + (r?.valor || 0), 0);
+
   const totalFraudesAtivas = ativasFiltradas.filter((r) => r?.tipoCodigo === 'FRAUDE').length;
   const totalJudiciaisAtivas = ativasFiltradas.filter((r) => r?.tipoCodigo === 'BLOQUEIO_JUDICIAL').length;
 
@@ -259,20 +424,27 @@ export const RelatoriosPage: React.FC = () => {
   const valorTotalTabela = restricoesFiltradas.reduce((acc, r) => acc + (r?.valor || 0), 0);
 
   const formatarMoeda = (valor: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+      .format(valor || 0)
+      .replace(/\u00A0/g, ' ');
 
   // Exportação CSV
   const exportarCSV = () => {
-    const cabecalho = ['Cliente', 'Documento', 'Tipo', 'Valor (R$)', 'Data Ocorrencia', 'Status'];
+    const cabecalho = ['Cliente', 'Tipo Proponente', 'Documento', 'Tipo', 'Valor (R$)', 'Data Ocorrencia', 'Status', 'Impacto Concessao', 'Motivo Discriminado'];
     const linhas = restricoesFiltradas.map((r) => {
       const doc = formatarCpfCnpj(obterDocCliente(r));
+      const tipoPessoa = obterTipoPessoaCliente(r);
+      const statusImpacto = r.bloqueante ? 'BLOQUEANTE' : 'TOLERADO';
       return [
         `"${r.clienteNome || 'Cliente'}"`,
+        `"${tipoPessoa}"`,
         `"${doc}"`,
         `"${r.tipoCodigo}"`,
         (r.valor || 0).toFixed(2),
         `"${formatarDataBR(r.dataOcorrencia)}"`,
         `"${r.status}"`,
+        `"${statusImpacto}"`,
+        `"${r.motivoBloqueio || '-'}"`,
       ];
     });
 
@@ -298,17 +470,23 @@ export const RelatoriosPage: React.FC = () => {
 
     const linhasHtml = restricoesFiltradas.map((r) => {
       const doc = formatarCpfCnpj(obterDocCliente(r)) || '-';
+      const tipoPessoa = obterTipoPessoaCliente(r);
       const valorBRL = formatarMoeda(r.valor || 0);
       const statusColor = r.status === 'ATIVA' ? '#b45309' : '#00874c';
+      const impactoBadge = r.bloqueante
+        ? '<span style="color:#b91c1c; font-weight:bold;">BLOQUEANTE</span>'
+        : '<span style="color:#00874c; font-weight:bold;">Tolerado</span>';
 
       return `
         <tr>
-          <td><strong>${r.clienteNome || 'Cliente'}</strong></td>
+          <td><strong>${r.clienteNome || 'Cliente'}</strong> <span style="font-size: 8px; color: #64748b;">(${tipoPessoa})</span></td>
           <td style="font-family: monospace;">${doc}</td>
           <td>${r.tipoCodigo}</td>
           <td style="text-align: right; font-weight: bold;">${valorBRL}</td>
           <td style="text-align: center;">${formatarDataBR(r.dataOcorrencia)}</td>
           <td style="text-align: center; font-weight: bold; color: ${statusColor};">${r.status}</td>
+          <td style="text-align: center;">${impactoBadge}</td>
+          <td style="font-size: 9px; color: #475569;">${r.motivoBloqueio || '-'}</td>
         </tr>
       `;
     }).join('');
@@ -326,28 +504,28 @@ export const RelatoriosPage: React.FC = () => {
         <meta charset="UTF-8" />
         <title>Relatório Executivo de Risco - Banestes</title>
         <style>
-          @page { size: A4 portrait; margin: 12mm; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #081c30; margin: 0; padding: 12px; font-size: 11px; }
-          .header { display: flex; justify-content: space-between; border-bottom: 2.5px solid #004b87; padding-bottom: 8px; margin-bottom: 14px; }
+          @page { size: A4 landscape; margin: 10mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #081c30; margin: 0; padding: 12px; font-size: 10px; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2.5px solid #004b87; padding-bottom: 8px; margin-bottom: 12px; }
           .header h1 { font-size: 18px; margin: 0; color: #002855; font-weight: 700; letter-spacing: -0.5px; }
           .header p { margin: 2px 0 0; color: #64748b; font-size: 10px; }
-          .kpis { display: flex; gap: 8px; margin-bottom: 14px; }
+          .kpis { display: flex; gap: 8px; margin-bottom: 12px; }
           .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; }
           .kpi-title { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: bold; }
-          .kpi-value { font-size: 15px; font-weight: bold; margin-top: 3px; color: #081c30; }
-          .filtros { font-size: 10px; background: #e8f3fa; padding: 6px 10px; border-radius: 4px; margin-bottom: 14px; color: #002855; border: 1px solid #cbd5e1; }
-          table { width: 100%; border-collapse: collapse; font-size: 10px; }
-          th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid #cbd5e1; font-size: 9px; text-transform: uppercase; color: #002855; }
+          .kpi-value { font-size: 14px; font-weight: bold; margin-top: 3px; color: #081c30; }
+          .filtros { font-size: 10px; background: #e8f3fa; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; color: #002855; border: 1px solid #cbd5e1; }
+          table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+          th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid #cbd5e1; font-size: 8.5px; text-transform: uppercase; color: #002855; }
           td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
           tr:nth-child(even) td { background-color: #f8fafc; }
-          .tfoot td { font-weight: bold; background: #e8f3fa; border-top: 2px solid #004b87; font-size: 11px; color: #002855; }
+          .tfoot td { font-weight: bold; background: #e8f3fa; border-top: 2px solid #004b87; font-size: 10.5px; color: #002855; }
         </style>
       </head>
       <body>
         <div class="header">
           <div>
             <h1>BANESTES • RISK & COMPLIANCE</h1>
-            <p>Relatório Analítico de Apontamentos e Restrições de Crédito</p>
+            <p>Relatório Analítico de Apontamentos, Restrições e Auditoria de Bloqueios</p>
           </div>
           <div style="text-align: right; font-size: 10px; color: #64748b;">
             Emissão: ${dataHoraEmissao}<br />
@@ -356,25 +534,25 @@ export const RelatoriosPage: React.FC = () => {
         </div>
 
         <div class="filtros">
-          <strong>Filtros Aplicados:</strong> Período: ${periodoTexto} | Classificação: ${tipoFiltro} | Status: ${statusFiltro} | Busca: ${busca || 'Nenhuma'}
+          <strong>Filtros Aplicados:</strong> Período: ${periodoTexto} | Proponente: ${tipoPessoaFiltro} | Tipo: ${tipoFiltro} | Status: ${statusFiltro} | Risco: ${bloqueioFiltro} | Busca: ${busca || 'Nenhuma'}
         </div>
 
         <div class="kpis">
           <div class="kpi-box">
-            <div class="kpi-title">Exposição Ativa</div>
+            <div class="kpi-title">Exposição Total Ativa</div>
             <div class="kpi-value">${formatarMoeda(volumeInadimplenciaAtiva)}</div>
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">Ocorrências Críticas</div>
-            <div class="kpi-value" style="color: #b91c1c;">${totalFraudesAtivas + totalJudiciaisAtivas}</div>
+            <div class="kpi-title">Bloqueios por Inadimplência</div>
+            <div class="kpi-value" style="color: #b91c1c;">${totalBloqueiosInadimplencia} (${formatarMoeda(volumeBloqueadoInadimplencia)})</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-title">Fraudes / Judiciais</div>
+            <div class="kpi-value" style="color: #7c3aed;">${totalFraudesAtivas + totalJudiciaisAtivas}</div>
           </div>
           <div class="kpi-box">
             <div class="kpi-title">Taxa Regularização</div>
             <div class="kpi-value" style="color: #00874c;">${taxaRegularizacao}%</div>
-          </div>
-          <div class="kpi-box">
-            <div class="kpi-title">Total Filtrado</div>
-            <div class="kpi-value" style="color: #004b87;">${formatarMoeda(valorTotalTabela)}</div>
           </div>
         </div>
 
@@ -387,16 +565,18 @@ export const RelatoriosPage: React.FC = () => {
               <th style="text-align: right;">Valor</th>
               <th style="text-align: center;">Ocorrência</th>
               <th style="text-align: center;">Status</th>
+              <th style="text-align: center;">Impacto</th>
+              <th>Discriminação Técnica</th>
             </tr>
           </thead>
           <tbody>
-            ${linhasHtml || '<tr><td colspan="6" style="text-align: center; padding: 20px;">Nenhum registro encontrado.</td></tr>'}
+            ${linhasHtml || '<tr><td colspan="8" style="text-align: center; padding: 20px;">Nenhum registro encontrado.</td></tr>'}
           </tbody>
           <tfoot>
             <tr class="tfoot">
               <td colspan="3">TOTAL GERAL FILTRADO (${restricoesFiltradas.length} itens)</td>
               <td style="text-align: right; color: #004b87;">${formatarMoeda(valorTotalTabela)}</td>
-              <td colspan="2"></td>
+              <td colspan="4"></td>
             </tr>
           </tfoot>
         </table>
@@ -418,7 +598,7 @@ export const RelatoriosPage: React.FC = () => {
         <div className="text-left">
           <h2 className="font-poppins text-xl font-bold text-slate-800 tracking-tight">Relatórios</h2>
           <p className="text-sm text-slate-500">
-            Painel de Relatórios.
+            Painel Analítico de Apontamentos e Auditoria de Bloqueios de Crédito.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
@@ -487,8 +667,9 @@ export const RelatoriosPage: React.FC = () => {
           </button>
         </div>
 
-        {/* INPUTS DE FILTRAGEM */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* INPUTS DE FILTRAGEM HARMONIZADOS COM TIPO DE CLIENTE */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+          {/* Busca Global */}
           <div className="sm:col-span-2 lg:col-span-2">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Busca Global
@@ -505,16 +686,33 @@ export const RelatoriosPage: React.FC = () => {
             />
           </div>
 
+          {/* NOVO: Tipo de Proponente (PF / PJ) */}
+          <div className="min-w-0">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Proponente
+            </label>
+            <select
+              value={tipoPessoaFiltro}
+              onChange={(e) => {
+                setTipoPessoaFiltro(e.target.value);
+                setPaginaAtual(1);
+              }}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-medium"
+            >
+              <option value="TODOS">Todos (PF/PJ)</option>
+              <option value="PF">Pessoa Física (PF)</option>
+              <option value="PJ">Pessoa Jurídica (PJ)</option>
+            </select>
+          </div>
+
+          {/* Classificação */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Classificação
             </label>
             <select
               value={tipoFiltro}
-              onChange={(e) => {
-                setTipoFiltro(e.target.value);
-                setPaginaAtual(1);
-              }}
+              onChange={(e) => lidarMudancaTipoFiltro(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
             >
               <option value="TODOS">Todos os Tipos</option>
@@ -524,6 +722,33 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
+          {/* Situação de Risco */}
+          <div className="min-w-0">
+            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
+              Situação de Risco
+            </label>
+            <select
+              disabled={situacaoRiscoDesabilitada}
+              value={bloqueioFiltro}
+              onChange={(e) => {
+                setBloqueioFiltro(e.target.value);
+                setPaginaAtual(1);
+              }}
+              className={`w-full px-3 py-2 rounded-lg text-xs transition-all font-medium border ${
+                situacaoRiscoDesabilitada
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none'
+                  : 'bg-slate-50 border-slate-300 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white'
+              }`}
+            >
+              {opcoesSituacaoRisco.map((opt) => (
+                <option key={opt.valor} value={opt.valor}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Operacional (Inicia em 'Ativa') */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Status Operacional
@@ -534,39 +759,24 @@ export const RelatoriosPage: React.FC = () => {
                 setStatusFiltro(e.target.value);
                 setPaginaAtual(1);
               }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all font-semibold text-[#004b87]"
             >
-              <option value="TODOS">Todos os Status</option>
-              <option value="ATIVA">Ativa</option>
+              <option value="ATIVA">Ativa (Vigente)</option>
               <option value="BAIXADA">Baixada (Regularizada)</option>
+              <option value="TODOS">Todos os Status</option>
             </select>
           </div>
 
+          {/* Período (Início) */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-              Início
+              Período (Início)
             </label>
             <input
               type="date"
               value={dataInicio}
               onChange={(e) => {
                 setDataInicio(e.target.value);
-                setAtalhoAtivo('');
-                setPaginaAtual(1);
-              }}
-              className="w-full min-w-0 px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#004b87] focus:border-[#004b87] focus:bg-white transition-all"
-            />
-          </div>
-
-          <div className="min-w-0">
-            <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
-              Fim
-            </label>
-            <input
-              type="date"
-              value={dataFim}
-              onChange={(e) => {
-                setDataFim(e.target.value);
                 setAtalhoAtivo('');
                 setPaginaAtual(1);
               }}
@@ -590,16 +800,26 @@ export const RelatoriosPage: React.FC = () => {
                 Exposição Financeira
               </span>
               <p className="font-poppins text-2xl font-bold text-[#081c30] mt-2">{formatarMoeda(volumeInadimplenciaAtiva)}</p>
-              <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block mt-2">
-                Inadimplências ativas no filtro
+              <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block mt-2 font-mono">
+                {ativasFiltradas.filter((r) => r.tipoCodigo === 'INADIMPLENCIA').length} inadimplências ativas
               </span>
+            </div>
+
+            <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
+              <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+                Bloqueios por Inadimplência
+              </span>
+              <p className="font-poppins text-2xl font-bold text-red-700 mt-2">{totalBloqueiosInadimplencia}</p>
+              <p className="text-xs text-red-600 mt-2 font-medium">
+                {formatarMoeda(volumeBloqueadoInadimplencia)} retidos por estourar teto/prazo
+              </p>
             </div>
 
             <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
               <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
                 Ocorrências Críticas
               </span>
-              <p className="font-poppins text-2xl font-bold text-red-700 mt-2">{totalFraudesAtivas + totalJudiciaisAtivas}</p>
+              <p className="font-poppins text-2xl font-bold text-purple-700 mt-2">{totalFraudesAtivas + totalJudiciaisAtivas}</p>
               <p className="text-xs text-slate-500 mt-2">
                 {totalFraudesAtivas} fraudes e {totalJudiciaisAtivas} ordens judiciais
               </p>
@@ -612,16 +832,6 @@ export const RelatoriosPage: React.FC = () => {
               <p className="font-poppins text-2xl font-bold text-[#00874c] mt-2">{taxaRegularizacao}%</p>
               <p className="text-xs text-slate-500 mt-2">
                 {baixadasFiltradas.length} de {totalFiltradas} ocorrências baixadas
-              </p>
-            </div>
-
-            <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
-              <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
-                Amostra Filtrada
-              </span>
-              <p className="font-poppins text-2xl font-bold text-[#081c30] mt-2">{totalFiltradas}</p>
-              <p className="text-xs text-slate-500 mt-2">
-                Total de {listaSeguraClientes.length} clientes cadastrados
               </p>
             </div>
           </div>
@@ -679,11 +889,20 @@ export const RelatoriosPage: React.FC = () => {
                     </th>
                     <th
                       onClick={() => alternarOrdenacao('status')}
-                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins text-center w-28"
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins text-center w-24"
                     >
                       <div className="flex items-center justify-center gap-1">
                         Status
                         {campoOrdenacao === 'status' && (ordemAsc ? ' ▲' : ' ▼')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => alternarOrdenacao('situacaoRisco')}
+                      className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
+                    >
+                      <div className="flex items-center gap-1">
+                        Impacto na Concessão
+                        {campoOrdenacao === 'situacaoRisco' && (ordemAsc ? ' ▲' : ' ▼')}
                       </div>
                     </th>
                   </tr>
@@ -691,9 +910,9 @@ export const RelatoriosPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-200">
                   {restricoesPaginadas.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                         <p className="font-poppins text-base font-semibold text-slate-600">Nenhum registro encontrado</p>
-                        <p className="text-xs text-slate-400 mt-1">Tente ajustar o intervalo de datas ou o termo pesquisado.</p>
+                        <p className="text-xs text-slate-400 mt-1">Tente ajustar os filtros ou selecionar "Todos os Status" para visualizar o histórico de baixadas.</p>
                         <button
                           onClick={limparFiltros}
                           className="mt-3 px-3 py-1.5 bg-[#e8f3fa] text-[#004b87] hover:bg-[#004b87] hover:text-white rounded-lg text-xs font-semibold transition-colors"
@@ -705,14 +924,20 @@ export const RelatoriosPage: React.FC = () => {
                   ) : (
                     restricoesPaginadas.map((r) => {
                       const doc = obterDocCliente(r);
+                      const tipoPessoa = obterTipoPessoaCliente(r);
                       const isAtiva = r.status === 'ATIVA';
 
                       return (
                         <tr key={r?.id || Math.random()} className="hover:bg-[#e8f3fa]/20 transition-colors">
                           <td className="px-6 py-4 font-semibold text-slate-800 align-middle">
-                            {r.clienteNome || 'Cliente'}
+                            <div className="flex items-center gap-2">
+                              <span>{r.clienteNome || 'Cliente'}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                {tipoPessoa}
+                              </span>
+                            </div>
                             {doc && (
-                              <span className="block text-xs font-normal text-slate-400 font-mono">
+                              <span className="block text-xs font-normal text-slate-400 font-mono mt-0.5">
                                 Documento: {formatarCpfCnpj(doc)}
                               </span>
                             )}
@@ -745,13 +970,38 @@ export const RelatoriosPage: React.FC = () => {
                               {r.status}
                             </span>
                           </td>
+
+                          {/* Impacto e Motivo Discriminado */}
+                          <td className="px-6 py-4 align-middle">
+                            {r.bloqueante ? (
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] uppercase font-poppins">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
+                                  Bloqueante
+                                </span>
+                                <span className="block text-[11px] font-medium text-red-700 mt-0.5">
+                                  {r.motivoBloqueio}
+                                </span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] uppercase font-poppins">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                  Tolerado
+                                </span>
+                                <span className="block text-[11px] text-slate-500 mt-0.5">
+                                  {r.motivoBloqueio}
+                                </span>
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
                   )}
                 </tbody>
 
-                {/* LINHA DE TOTALIZADORES NO RODAPÉ */}
+                {/* Totalizador no Rodapé */}
                 {restricoesFiltradas.length > 0 && (
                   <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-semibold text-slate-800 text-xs">
                     <tr>
@@ -762,14 +1012,14 @@ export const RelatoriosPage: React.FC = () => {
                       <td className="px-6 py-3.5 text-[#004b87] font-bold text-sm font-poppins">
                         {formatarMoeda(valorTotalTabela)}
                       </td>
-                      <td className="px-6 py-3.5" colSpan={2}></td>
+                      <td className="px-6 py-3.5" colSpan={3}></td>
                     </tr>
                   </tfoot>
                 )}
               </table>
             </div>
 
-            {/* CONTROLE DE PAGINAÇÃO */}
+            {/* Paginação */}
             {totalPaginas > 1 && (
               <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
                 <span className="text-xs text-slate-500">

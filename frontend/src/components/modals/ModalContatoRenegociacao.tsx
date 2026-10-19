@@ -11,6 +11,28 @@ interface ModalContatoRenegociacaoProps {
   onFechar: () => void;
 }
 
+// Converte YYYY-MM-DD para DD/MM/AAAA sem sofrer alteração de fuso horário
+const formatarDataBR = (dataStr?: string | null): string => {
+  if (!dataStr) return 'Sem data';
+  const limpo = dataStr.split('T')[0];
+  const partes = limpo.split('-');
+  if (partes.length === 3) {
+    const [ano, mes, dia] = partes;
+    return `${dia}/${mes}/${ano}`;
+  }
+  return dataStr;
+};
+
+// Formata CEP para o padrão 00000-000
+const formatarCep = (cep?: string | null): string => {
+  if (!cep) return '';
+  const digitos = cep.replace(/\D/g, '').slice(0, 8);
+  if (digitos.length === 8) {
+    return digitos.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+  }
+  return cep;
+};
+
 export const ModalContatoRenegociacao: React.FC<ModalContatoRenegociacaoProps> = ({
   aberto,
   cliente,
@@ -31,8 +53,8 @@ export const ModalContatoRenegociacao: React.FC<ModalContatoRenegociacaoProps> =
 
   // Mensagem contextual para o WhatsApp dependendo do status
   const textoMensagem = isBaixada
-    ? `Olá ${cliente.nome}, aqui é do Banestes. Confirmamos que a sua restrição de ${restricao?.tipoCodigo || 'pendência'} no valor de ${valorFormatado} consta como REGULARIZADA/QUITADA em nosso sistema. Caso necessite do termo de quitação ou de suporte adicional, estamos à disposição.`
-    : `Olá ${cliente.nome}, aqui é do setor de Negociação e Risco do Banestes. Constatamos um apontamento de ${restricao?.tipoCodigo || 'pendência'} no valor de ${valorFormatado} e temos condições especiais para regularização imediata do seu cadastro. Como podemos prosseguir?`;
+    ? `Olá ${cliente.nome}, aqui é do Batestes. Confirmamos que a sua restrição de ${restricao?.tipoCodigo || 'pendência'} no valor de ${valorFormatado} consta como REGULARIZADA/QUITADA em nosso sistema. Caso necessite do termo de quitação ou de suporte adicional, estamos à disposição.`
+    : `Olá ${cliente.nome}, aqui é do setor de Negociação e Risco do Bantestes. Constatamos um apontamento de ${restricao?.tipoCodigo || 'pendência'} no valor de ${valorFormatado} e temos condições especiais para regularização imediata do seu cadastro. Como podemos prosseguir?`;
 
   const linkWhatsApp = `https://wa.me/55${telNumeros}?text=${encodeURIComponent(textoMensagem)}`;
 
@@ -42,7 +64,7 @@ export const ModalContatoRenegociacao: React.FC<ModalContatoRenegociacaoProps> =
     cliente.complemento,
     cliente.bairro,
     cliente.cidade && cliente.uf ? `${cliente.cidade} - ${cliente.uf}` : cliente.cidade,
-    cliente.cep ? `CEP: ${cliente.cep}` : '',
+    cliente.cep ? `CEP: ${formatarCep(cliente.cep)}` : '',
   ].filter(Boolean);
 
   const enderecoCompleto = enderecoPartes.length > 0 ? enderecoPartes.join(', ') : 'Endereço não cadastrado';
@@ -104,8 +126,9 @@ export const ModalContatoRenegociacao: React.FC<ModalContatoRenegociacaoProps> =
                     {restricao.status}
                   </span>
                 </div>
+                {/* Data formatada para DD/MM/AAAA */}
                 <span className="text-xs font-semibold text-slate-800 block mt-0.5">
-                  {restricao.tipoCodigo} • {restricao.dataOcorrencia || 'Sem data'}
+                  {restricao.tipoCodigo} • {formatarDataBR(restricao.dataOcorrencia)}
                 </span>
               </div>
 
@@ -204,7 +227,7 @@ export const ModalContatoRenegociacao: React.FC<ModalContatoRenegociacaoProps> =
               {cliente.email && (
                 <a
                   href={`mailto:${cliente.email}?subject=${encodeURIComponent(
-                    isBaixada ? 'Banestes - Comprovante de Quitação' : 'Banestes - Regularização de Restrição'
+                    isBaixada ? 'Bantestes - Comprovante de Quitação' : 'Bantestes - Regularização de Restrição'
                   )}`}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold font-poppins transition-colors"
                 >
@@ -213,7 +236,7 @@ export const ModalContatoRenegociacao: React.FC<ModalContatoRenegociacaoProps> =
               )}
             </div>
 
-            {/* Endereço */}
+            {/* Endereço Residencial/Comercial */}
             <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-start gap-3 shadow-2xs">
               <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
