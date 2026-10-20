@@ -52,18 +52,38 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
   const [clienteAtual, setClienteAtual] = useState<Cliente | null>(null);
   const [decisao, setDecisao] = useState<ParecerDecisao | null>(null);
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
+  const [politicas, setPoliticas] = useState<PoliticaRiscoDTO[]>([]);
+  const [politicaVigente, setPoliticaVigente] = useState<PoliticaRiscoDTO | null>(null);
   const [filtroStatusTabela, setFiltroStatusTabela] = useState<'TODOS' | 'ATIVA' | 'BAIXADA'>('TODOS');
   const [carregando, setCarregando] = useState<boolean>(false);
   const [modalRestricaoAberto, setModalRestricaoAberto] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  // Estados para o Modal de Inspeção da Política Aplicada
+  const [modalPoliticaAberto, setModalPoliticaAberto] = useState<boolean>(false);
+  const [politicaSelecionada, setPoliticaSelecionada] = useState<PoliticaRiscoDTO | null>(null);
+  const [restricaoInspecionada, setRestricaoInspecionada] = useState<RestricaoResponseDTO | null>(null);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     carregarClientesIniciais();
+    carregarPoliticas();
   }, []);
 
-  // Seleciona automaticamente o cliente se um ID inicial for fornecido via navegação
+  const carregarPoliticas = async () => {
+    try {
+      const [todas, vigente] = await Promise.all([
+        politicaService.listarTodas().catch(() => []),
+        politicaService.obterVigente().catch(() => null),
+      ]);
+      setPoliticas(todas);
+      setPoliticaVigente(vigente);
+    } catch (e) {
+      console.error('Erro ao carregar políticas:', e);
+    }
+  };
+
   useEffect(() => {
     if (clienteIdInicial && clientes.length > 0) {
       const encontrado = clientes.find((c) => c.id === clienteIdInicial);
@@ -73,7 +93,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     }
   }, [clienteIdInicial, clientes]);
 
-  // Fecha o menu de sugestões ao clicar fora do componente
   useEffect(() => {
     const handleClickFora = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -99,7 +118,33 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     }
   };
 
-  // Motor dinâmico com princípio de Irretroatividade Normativa e segregação por versão
+  // Identifica a política aplicável para uma restrição respeitando a irretroatividade temporal
+  const obterPoliticaParaRestricao = (r: RestricaoResponseDTO): PoliticaRiscoDTO | null => {
+    if (!r.dataOcorrencia) return politicaVigente;
+    const partesData = r.dataOcorrencia.split('T')[0].split('-');
+    let dataOcorr: Date;
+    if (partesData.length === 3) {
+      dataOcorr = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 23, 59, 59);
+    } else {
+      dataOcorr = new Date(r.dataOcorrencia);
+    }
+
+    const encontrada = politicas.find((p) => {
+      const inicio = new Date(p.vigenciaInicio);
+      const fim = p.vigenciaFim ? new Date(p.vigenciaFim) : new Date(8640000000000000);
+      return dataOcorr >= inicio && dataOcorr <= fim;
+    });
+
+    return encontrada || politicaVigente;
+  };
+
+  const abrirInspecaoPolitica = (r: RestricaoResponseDTO) => {
+    const pol = obterPoliticaParaRestricao(r);
+    setRestricaoInspecionada(r);
+    setPoliticaSelecionada(pol);
+    setModalPoliticaAberto(true);
+  };
+
   const avaliarConformidadeTemporal = async (
     cliente: Cliente,
     listaRestricoes: RestricaoResponseDTO[]
@@ -126,7 +171,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
 
     const motivos: string[] = [];
     const todasPoliticas = await politicaService.listarTodas();
-    const politicaVigente = await politicaService.obterVigente();
+    const polVigente = await politicaService.obterVigente();
 
     // 1. Verificação compulsória de Fraude e Bloqueio Judicial
     for (const r of ativas) {
@@ -142,10 +187,8 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     const inadimplencias = ativas.filter((r) => r.tipoCodigo === 'INADIMPLENCIA');
 
     if (inadimplencias.length > 0) {
-      // Estruturas de segregação por versão de política (Irretroatividade)
       const acumuladoPorVersao = new Map<string, number>();
       const politicasPorVersao = new Map<string, PoliticaRiscoDTO>();
-      const restricoesPorVersao = new Map<string, RestricaoResponseDTO[]>();
 
       for (const r of inadimplencias) {
         const partesData = (r.dataOcorrencia || '').split('T')[0].split('-');
@@ -156,12 +199,11 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
           dataOcorr = new Date(r.dataOcorrencia || agora);
         }
 
-        // Obtém a versão da política que vigorava na data exata desta ocorrência
         const politicaDaEpoca = todasPoliticas.find((p) => {
           const inicio = new Date(p.vigenciaInicio);
           const fim = p.vigenciaFim ? new Date(p.vigenciaFim) : new Date(8640000000000000);
           return dataOcorr >= inicio && dataOcorr <= fim;
-        }) || politicaVigente;
+        }) || polVigente;
 
         const versaoKey = politicaDaEpoca.versao || 'v1.0';
         politicasPorVersao.set(versaoKey, politicaDaEpoca);
@@ -169,11 +211,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
         const valorAtual = acumuladoPorVersao.get(versaoKey) || 0;
         acumuladoPorVersao.set(versaoKey, valorAtual + (Number(r.valor) || 0));
 
-        const grupoRestricoes = restricoesPorVersao.get(versaoKey) || [];
-        grupoRestricoes.push(r);
-        restricoesPorVersao.set(versaoKey, grupoRestricoes);
-
-        // Verificação de tolerância de atraso individual por restrição confrontada com sua política
         const diffTempo = agora.getTime() - dataOcorr.getTime();
         const diasAtraso = Math.max(0, Math.floor(diffTempo / (1000 * 60 * 60 * 24)));
 
@@ -185,7 +222,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
         }
       }
 
-      // Verificação de tetos financeiros segregados por época
       for (const [versaoKey, acumulado] of acumuladoPorVersao.entries()) {
         const politica = politicasPorVersao.get(versaoKey)!;
         if (acumulado > politica.tetoInadimplencia) {
@@ -210,7 +246,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     };
   };
 
-  // Sugestões considerando caracteres alfanuméricos sanitizados e nomes
   const sugestoesClientes = useMemo(() => {
     const listaSegura = Array.isArray(clientes) ? clientes : [];
     const termo = termoBusca.trim();
@@ -296,7 +331,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     }
   };
 
-  // Filtragem e ordenação decrescente por data da restrição
   const restricoesExibidas = useMemo(() => {
     const filtradas = filtroStatusTabela === 'TODOS'
       ? restricoes
@@ -421,7 +455,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             decisao.bloqueado ? 'bg-red-50/40 border-red-200' : 'bg-emerald-50/40 border-emerald-200'
           }`}
         >
-          {/* Cabeçalho do Veredito */}
           <div className="flex items-center gap-3.5 mb-6">
             <span
               className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -461,7 +494,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
           </div>
 
-          {/* Dados do Proponente */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-5 text-xs border-b border-red-200/50">
             <div>
               <span className="text-slate-400 font-medium block text-[11px]">Cliente / Razão Social</span>
@@ -481,7 +513,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
           </div>
 
-          {/* Bloco de Justificativas com menção à Versão e Data da Política à época */}
           <div className="mt-5 p-4 bg-white rounded-xl border border-red-100 shadow-2xs">
             <h5 className="font-poppins text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
               {decisao.bloqueado ? 'JUSTIFICATIVA DO BLOQUEIO:' : 'PARECER DE CONFORMIDADE:'}
@@ -517,7 +548,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {/* FILTRO EM ABAS */}
               <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-poppins">
                 <button
                   type="button"
@@ -556,7 +586,6 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                 </button>
               </div>
 
-              {/* BOTÃO NOVA RESTRIÇÃO */}
               <button
                 onClick={() => setModalRestricaoAberto(true)}
                 className="px-4 py-2 bg-[#081c30] hover:bg-[#002855] text-white font-poppins font-medium text-sm rounded-lg transition-colors flex items-center gap-2 shadow-xs active:scale-[0.99]"
@@ -577,13 +606,14 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                   <th className="px-6 py-3.5 font-poppins">Valor Atrasado</th>
                   <th className="px-6 py-3.5 font-poppins">Data Ocorrência</th>
                   <th className="px-6 py-3.5 font-poppins">Status</th>
+                  <th className="px-6 py-3.5 text-center font-poppins">Política Aplicada</th>
                   <th className="px-6 py-3.5 text-right font-poppins">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {restricoesExibidas.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-400 font-sans">
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-400 font-sans">
                       {filtroStatusTabela === 'TODOS'
                         ? 'Nenhuma restrição registrada para este cliente.'
                         : `Nenhuma restrição ${filtroStatusTabela === 'ATIVA' ? 'ativa' : 'baixada'} para este cliente.`}
@@ -593,6 +623,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                   restricoesExibidas.map((r) => {
                     const isAtiva = r.status === 'ATIVA';
                     const valorFormatado = formatarMoeda(r.valor || 0);
+                    const pol = obterPoliticaParaRestricao(r);
 
                     return (
                       <tr key={r.id} className="hover:bg-[#e8f3fa]/20 transition-colors">
@@ -625,6 +656,24 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                             {r.status}
                           </span>
                         </td>
+
+                        {/* COLUNA DEDICADA: VISUALIZAR POLÍTICA UTILIZADA */}
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => abrirInspecaoPolitica(r)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-[#e8f3fa] text-slate-700 hover:text-[#004b87] border border-slate-300/80 hover:border-[#004b87]/40 rounded-lg text-xs font-semibold font-poppins transition-all shadow-2xs group"
+                            title="Inspecionar parâmetros da Política de Risco aplicada a esta ocorrência"
+                          >
+                            <svg className="w-4 h-4 text-slate-500 group-hover:text-[#004b87] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <span>{pol?.versao ? `Política ${pol.versao}` : 'Ver Política'}</span>
+                          </button>
+                        </td>
+
+                        {/* COLUNA DE AÇÃO */}
                         <td className="px-6 py-4 text-right">
                           {isAtiva ? (
                             <button
@@ -650,6 +699,135 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </table>
           </div>
         </section>
+      )}
+
+      {/* MODAL DE INSPEÇÃO DA POLÍTICA DE RISCO VIGENTE À ÉPOCA */}
+      {modalPoliticaAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-sans">
+          <div
+            className="fixed inset-0 bg-[#081c30]/75 backdrop-blur-xs transition-opacity"
+            onClick={() => setModalPoliticaAberto(false)}
+          />
+
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-lg overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-150 text-left">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider font-poppins mb-1 bg-[#004b87]/10 text-[#004b87]">
+                  Auditoria Normativa & Compliance
+                </span>
+                <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
+                  Política de Risco Utilizada
+                </h3>
+              </div>
+              <button
+                onClick={() => setModalPoliticaAberto(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Resumo da Ocorrência sob Análise */}
+              {restricaoInspecionada && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl space-y-1.5 text-xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-poppins block">
+                    Apontamento Confrontado
+                  </span>
+                  <div className="flex justify-between items-center text-slate-800">
+                    <span className="font-bold">{restricaoInspecionada.tipoCodigo}</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatarMoeda(restricaoInspecionada.valor || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                    <span>Data da Ocorrência:</span>
+                    <span className="font-mono">{formatarDataBR(restricaoInspecionada.dataOcorrencia)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Parâmetros da Política Vigente à Época */}
+              {politicaSelecionada ? (
+                <div className="space-y-3">
+                  <div className="p-4 bg-[#e8f3fa]/40 border border-[#004b87]/20 rounded-xl">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs font-bold text-[#004b87] font-poppins">
+                        Versão Normativa: {politicaSelecionada.versao}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          politicaSelecionada.ativo
+                            ? 'bg-emerald-100 text-[#00874c]'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {politicaSelecionada.ativo ? 'Versão Vigente' : 'Versão Histórica'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-xs mt-3">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-semibold">
+                          Teto Inadimplência
+                        </span>
+                        <p className="font-bold font-poppins text-slate-800 text-sm">
+                          {formatarMoeda(politicaSelecionada.tetoInadimplencia)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-semibold">
+                          Tolerância Máx. Atraso
+                        </span>
+                        <p className="font-bold font-poppins text-slate-800 text-sm">
+                          {politicaSelecionada.diasAtrasoMaximo} dias
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-slate-200/70 text-[11px] text-slate-600 flex justify-between">
+                      <span>Período de Vigência:</span>
+                      <span className="font-mono font-semibold">
+                        {formatarDataBR(politicaSelecionada.vigenciaInicio)} até{' '}
+                        {politicaSelecionada.vigenciaFim
+                          ? formatarDataBR(politicaSelecionada.vigenciaFim)
+                          : 'Indeterminado (Atual)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-poppins mb-1">
+                      Justificativa Técnica Normativa
+                    </span>
+                    <p className="text-slate-700 leading-relaxed italic">
+                      "{politicaSelecionada.justificativa || 'Sem justificativa informada.'}"
+                    </p>
+                    <span className="block mt-2 text-[10px] text-slate-400">
+                      Cadastrado por: {politicaSelecionada.criadoPor || 'Sistema'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 text-center text-xs text-slate-500">
+                  Nenhuma política de risco encontrada para a data desta restrição.
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModalPoliticaAberto(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors font-poppins"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL DE NOVA RESTRIÇÃO */}

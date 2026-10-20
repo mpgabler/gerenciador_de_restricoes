@@ -12,15 +12,13 @@ export const formatarCpfCnpj = (valor: string): string => {
   if (!temLetra && limpo.length <= 11) {
     return limpo
       .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      .replace(/(\d{3})(\d)/, '$1.$2') .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
 
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')
-    .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2') .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
 export const formatarDataBR = (dataStr?: string | null): string => {
@@ -37,6 +35,23 @@ export const formatarDataBR = (dataStr?: string | null): string => {
 interface RestricaoAuditada extends RestricaoResponseDTO {
   bloqueante: boolean;
   motivoBloqueio?: string;
+  versaoPolitica?: string;
+}
+
+interface GrupoRestricaoAuditada {
+  idGrupo: string;
+  clienteId?: string;
+  clienteNome?: string;
+  tipoCodigo: string;
+  status: string;
+  valorTotal: number;
+  dataOcorrencia: string;
+  bloqueante: boolean;
+  motivoBloqueio?: string;
+  versaoPolitica?: string;
+  tipoPessoa: 'PF' | 'PJ';
+  documento: string;
+  itens: RestricaoAuditada[];
 }
 
 export const RelatoriosPage: React.FC = () => {
@@ -55,10 +70,11 @@ export const RelatoriosPage: React.FC = () => {
   const [dataFim, setDataFim] = useState<string>('');
   const [atalhoAtivo, setAtalhoAtivo] = useState<string>('todos');
 
-  // 2. Estados da Tabela (Ordenação e Paginação)
+  // 2. Estados da Tabela (Ordenação, Paginação e Expansão de Agrupamentos)
   const [campoOrdenacao, setCampoOrdenacao] = useState<CampoOrdenacao>('dataOcorrencia');
   const [ordemAsc, setOrdemAsc] = useState<boolean>(false);
   const [paginaAtual, setPaginaAtual] = useState<number>(1);
+  const [gruposExpandidos, setGruposExpandidos] = useState<Set<string>>(new Set());
   const itensPorPagina = 5;
 
   useEffect(() => {
@@ -132,7 +148,6 @@ export const RelatoriosPage: React.FC = () => {
     );
   };
 
-  // Identifica se o cliente do apontamento é Pessoa Física ou Jurídica
   const obterTipoPessoaCliente = (r: RestricaoResponseDTO): 'PF' | 'PJ' => {
     const cliente =
       (r?.clienteId ? mapaClientes.get(r.clienteId) : undefined) ||
@@ -146,7 +161,6 @@ export const RelatoriosPage: React.FC = () => {
     return docLimpo.length > 11 ? 'PJ' : 'PF';
   };
 
-  // Desabilita Situação de Risco quando a restrição tem bloqueio mandatório/compulsório
   const situacaoRiscoDesabilitada = tipoFiltro === 'FRAUDE' || tipoFiltro === 'BLOQUEIO_JUDICIAL';
 
   const opcoesSituacaoRisco = useMemo(() => {
@@ -177,6 +191,18 @@ export const RelatoriosPage: React.FC = () => {
     setPaginaAtual(1);
   };
 
+  const alternarExpansao = (idGrupo: string) => {
+    setGruposExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(idGrupo)) {
+        next.delete(idGrupo);
+      } else {
+        next.add(idGrupo);
+      }
+      return next;
+    });
+  };
+
   // Motor analítico que enriquece os registros para auditoria
   const restricoesAuditadas = useMemo<RestricaoAuditada[]>(() => {
     const agora = new Date();
@@ -202,6 +228,7 @@ export const RelatoriosPage: React.FC = () => {
           ...r,
           bloqueante: true,
           motivoBloqueio: r.status === 'BAIXADA' ? 'Fraude Regularizada/Baixada' : 'Bloqueio Compulsório por Fraude',
+          versaoPolitica: 'N/A',
         };
       }
 
@@ -210,6 +237,7 @@ export const RelatoriosPage: React.FC = () => {
           ...r,
           bloqueante: true,
           motivoBloqueio: r.status === 'BAIXADA' ? 'Bloqueio Judicial Baixado' : 'Bloqueio Judicial Mandatório',
+          versaoPolitica: 'N/A',
         };
       }
 
@@ -257,10 +285,11 @@ export const RelatoriosPage: React.FC = () => {
           ...r,
           bloqueante: eBloqueante,
           motivoBloqueio: detalhe,
+          versaoPolitica: politicaDaEpoca.versao || 'v1.0',
         };
       }
 
-      return { ...r, bloqueante: false, motivoBloqueio: 'Sem restrição impeditiva' };
+      return { ...r, bloqueante: false, motivoBloqueio: 'Sem restrição impeditiva', versaoPolitica: 'N/A' };
     });
   }, [listaSeguraRestricoes, politicas]);
 
@@ -308,12 +337,13 @@ export const RelatoriosPage: React.FC = () => {
     setBusca('');
     setTipoPessoaFiltro('TODOS');
     setTipoFiltro('TODOS');
-    setStatusFiltro('ATIVA'); // Retorna ao padrão "Ativa"
+    setStatusFiltro('ATIVA');
     setBloqueioFiltro('TODOS');
     setDataInicio('');
     setDataFim('');
     setAtalhoAtivo('todos');
     setPaginaAtual(1);
+    setGruposExpandidos(new Set());
   };
 
   // Filtragem combinada resiliente com suporte ao tipo PF/PJ
@@ -336,11 +366,9 @@ export const RelatoriosPage: React.FC = () => {
       const atendeTipo = tipoFiltro === 'TODOS' || r.tipoCodigo === tipoFiltro;
       const atendeStatus = statusFiltro === 'TODOS' || r.status === statusFiltro;
 
-      // Filtro de Pessoa Física (PF) / Pessoa Jurídica (PJ)
       const tipoPessoa = obterTipoPessoaCliente(r);
       const atendeTipoPessoa = tipoPessoaFiltro === 'TODOS' || tipoPessoa === tipoPessoaFiltro;
 
-      // Filtro de Situação de Risco
       let atendeBloqueio = true;
       if (!situacaoRiscoDesabilitada) {
         if (bloqueioFiltro === 'BLOQUEIO_INADIMPLENCIA') {
@@ -360,15 +388,63 @@ export const RelatoriosPage: React.FC = () => {
     });
   }, [restricoesAuditadas, mapaClientes, mapaClientesPorNome, busca, tipoPessoaFiltro, tipoFiltro, statusFiltro, bloqueioFiltro, situacaoRiscoDesabilitada, dataInicio, dataFim]);
 
-  // Ordenação dinâmica
-  const restricoesOrdenadas = useMemo(() => {
-    return [...restricoesFiltradas].sort((a, b) => {
-      let valorA: any = a[campoOrdenacao as keyof RestricaoAuditada];
-      let valorB: any = b[campoOrdenacao as keyof RestricaoAuditada];
+  // Agrupamento dos apontamentos filtrados por Cliente + Tipo + Status + Vigência Normativa
+  const gruposFiltrados = useMemo<GrupoRestricaoAuditada[]>(() => {
+    const mapa = new Map<string, GrupoRestricaoAuditada>();
+
+    restricoesFiltradas.forEach((r) => {
+      const doc = obterDocCliente(r);
+      const tipoPessoa = obterTipoPessoaCliente(r);
+      const idKey = r.clienteId || r.clienteNome || 'unknown';
+      const versaoPol = r.versaoPolitica || 'padrao';
+
+      // Chave de agrupamento: agrega itens sob a mesma política/período, status e classificação
+      const chave = `${idKey}_${r.tipoCodigo}_${r.status}_${versaoPol}`;
+
+      if (!mapa.has(chave)) {
+        mapa.set(chave, {
+          idGrupo: chave,
+          clienteId: r.clienteId,
+          clienteNome: r.clienteNome,
+          tipoCodigo: r.tipoCodigo,
+          status: r.status,
+          valorTotal: Number(r.valor) || 0,
+          dataOcorrencia: r.dataOcorrencia || '',
+          bloqueante: r.bloqueante,
+          motivoBloqueio: r.motivoBloqueio,
+          versaoPolitica: r.versaoPolitica,
+          tipoPessoa,
+          documento: doc,
+          itens: [r],
+        });
+      } else {
+        const grupo = mapa.get(chave)!;
+        grupo.valorTotal += Number(r.valor) || 0;
+        grupo.itens.push(r);
+
+        if ((r.dataOcorrencia || '') > (grupo.dataOcorrencia || '')) {
+          grupo.dataOcorrencia = r.dataOcorrencia || '';
+        }
+
+        if (r.bloqueante) {
+          grupo.bloqueante = true;
+          grupo.motivoBloqueio = r.motivoBloqueio;
+        }
+      }
+    });
+
+    return Array.from(mapa.values());
+  }, [restricoesFiltradas, mapaClientes, mapaClientesPorNome]);
+
+  // Ordenação dinâmica sobre os grupos consolidados
+  const gruposOrdenados = useMemo(() => {
+    return [...gruposFiltrados].sort((a, b) => {
+      let valorA: any = a[campoOrdenacao as keyof GrupoRestricaoAuditada];
+      let valorB: any = b[campoOrdenacao as keyof GrupoRestricaoAuditada];
 
       if (campoOrdenacao === 'valor') {
-        valorA = a.valor || 0;
-        valorB = b.valor || 0;
+        valorA = a.valorTotal || 0;
+        valorB = b.valorTotal || 0;
       } else if (campoOrdenacao === 'situacaoRisco') {
         valorA = a.bloqueante ? 1 : 0;
         valorB = b.bloqueante ? 1 : 0;
@@ -381,13 +457,13 @@ export const RelatoriosPage: React.FC = () => {
       if (valorA > valorB) return ordemAsc ? 1 : -1;
       return 0;
     });
-  }, [restricoesFiltradas, campoOrdenacao, ordemAsc]);
+  }, [gruposFiltrados, campoOrdenacao, ordemAsc]);
 
-  const totalPaginas = Math.ceil(restricoesOrdenadas.length / itensPorPagina) || 1;
-  const restricoesPaginadas = useMemo(() => {
+  const totalPaginas = Math.ceil(gruposOrdenados.length / itensPorPagina) || 1;
+  const gruposPaginados = useMemo(() => {
     const inicio = (paginaAtual - 1) * itensPorPagina;
-    return restricoesOrdenadas.slice(inicio, inicio + itensPorPagina);
-  }, [restricoesOrdenadas, paginaAtual]);
+    return gruposOrdenados.slice(inicio, inicio + itensPorPagina);
+  }, [gruposOrdenados, paginaAtual]);
 
   const alternarOrdenacao = (campo: CampoOrdenacao) => {
     if (campoOrdenacao === campo) {
@@ -428,9 +504,9 @@ export const RelatoriosPage: React.FC = () => {
       .format(valor || 0)
       .replace(/\u00A0/g, ' ');
 
-  // Exportação CSV
+  // Exportação CSV com a Coluna de Versão de Política
   const exportarCSV = () => {
-    const cabecalho = ['Cliente', 'Tipo Proponente', 'Documento', 'Tipo', 'Valor (R$)', 'Data Ocorrencia', 'Status', 'Impacto Concessao', 'Motivo Discriminado'];
+    const cabecalho = ['Cliente', 'Tipo Proponente', 'Documento', 'Tipo', 'Valor (R$)', 'Data Ocorrencia', 'Status', 'Impacto Concessao', 'Versao Politica', 'Motivo Discriminado'];
     const linhas = restricoesFiltradas.map((r) => {
       const doc = formatarCpfCnpj(obterDocCliente(r));
       const tipoPessoa = obterTipoPessoaCliente(r);
@@ -444,6 +520,7 @@ export const RelatoriosPage: React.FC = () => {
         `"${formatarDataBR(r.dataOcorrencia)}"`,
         `"${r.status}"`,
         `"${statusImpacto}"`,
+        `"${r.versaoPolitica || '-'}"`,
         `"${r.motivoBloqueio || '-'}"`,
       ];
     });
@@ -461,32 +538,61 @@ export const RelatoriosPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Impressão A4
+  // Impressão A4 com a Coluna de Política Aplicada
+  // Impressão A4 / PDF com Agregação e Composição Detalhada
   const imprimirRelatorioCompleto = () => {
     const dataHoraEmissao = new Date().toLocaleString('pt-BR');
     const periodoTexto = (dataInicio || dataFim)
       ? `${formatarDataBR(dataInicio) || 'Início'} até ${formatarDataBR(dataFim) || 'Hoje'}`
       : 'Todo o Histórico';
 
-    const linhasHtml = restricoesFiltradas.map((r) => {
-      const doc = formatarCpfCnpj(obterDocCliente(r)) || '-';
-      const tipoPessoa = obterTipoPessoaCliente(r);
-      const valorBRL = formatarMoeda(r.valor || 0);
-      const statusColor = r.status === 'ATIVA' ? '#b45309' : '#00874c';
-      const impactoBadge = r.bloqueante
+    const linhasHtml = gruposOrdenados.map((g) => {
+      const doc = formatarCpfCnpj(g.documento) || '-';
+      const valorTotalBRL = formatarMoeda(g.valorTotal || 0);
+      const statusColor = g.status === 'ATIVA' ? '#b45309' : '#00874c';
+      const impactoBadge = g.bloqueante
         ? '<span style="color:#b91c1c; font-weight:bold;">BLOQUEANTE</span>'
         : '<span style="color:#00874c; font-weight:bold;">Tolerado</span>';
+      const versaoTexto = g.versaoPolitica && g.versaoPolitica !== 'N/A' ? g.versaoPolitica : '—';
+      const temMultiplos = g.itens.length > 1;
+
+      // Sub-bloco visual impresso que detalha os lançamentos somados
+      const subLancamentosHtml = temMultiplos
+        ? `
+          <div style="margin-top: 4px; padding: 3px 5px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; text-align: left;">
+            <div style="font-size: 7.5px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">
+              Lançamentos Somados (${g.itens.length}x):
+            </div>
+            ${g.itens.map((it) => `
+              <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 8px; font-family: monospace; color: #334155;">
+                <span>• ${formatarDataBR(it.dataOcorrencia)}:</span>
+                <span style="font-weight: 600;">${formatarMoeda(it.valor || 0)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `
+        : '';
 
       return `
         <tr>
-          <td><strong>${r.clienteNome || 'Cliente'}</strong> <span style="font-size: 8px; color: #64748b;">(${tipoPessoa})</span></td>
-          <td style="font-family: monospace;">${doc}</td>
-          <td>${r.tipoCodigo}</td>
-          <td style="text-align: right; font-weight: bold;">${valorBRL}</td>
-          <td style="text-align: center;">${formatarDataBR(r.dataOcorrencia)}</td>
-          <td style="text-align: center; font-weight: bold; color: ${statusColor};">${r.status}</td>
-          <td style="text-align: center;">${impactoBadge}</td>
-          <td style="font-size: 9px; color: #475569;">${r.motivoBloqueio || '-'}</td>
+          <td style="vertical-align: top;">
+            <strong>${g.clienteNome || 'Cliente'}</strong> 
+            <span style="font-size: 8px; color: #64748b;">(${g.tipoPessoa})</span>
+          </td>
+          <td style="font-family: monospace; vertical-align: top;">${doc}</td>
+          <td style="vertical-align: top;">${g.tipoCodigo}</td>
+          <td style="text-align: right; vertical-align: top; min-width: 130px;">
+            <div style="font-weight: bold; font-family: monospace; font-size: 10px;">
+              ${valorTotalBRL}
+              ${temMultiplos ? `<span style="font-size: 8px; background: #e2e8f0; padding: 1px 3px; border-radius: 3px; margin-left: 2px;">${g.itens.length}x</span>` : ''}
+            </div>
+            ${subLancamentosHtml}
+          </td>
+          <td style="text-align: center; vertical-align: top;">${formatarDataBR(g.dataOcorrencia)}</td>
+          <td style="text-align: center; font-weight: bold; color: ${statusColor}; vertical-align: top;">${g.status}</td>
+          <td style="text-align: center; vertical-align: top;">${impactoBadge}</td>
+          <td style="text-align: center; font-family: monospace; font-weight: bold; color: #004b87; vertical-align: top;">${versaoTexto}</td>
+          <td style="font-size: 9px; color: #475569; vertical-align: top;">${g.motivoBloqueio || '-'}</td>
         </tr>
       `;
     }).join('');
@@ -504,21 +610,21 @@ export const RelatoriosPage: React.FC = () => {
         <meta charset="UTF-8" />
         <title>Relatório Executivo de Risco - Banestes</title>
         <style>
-          @page { size: A4 landscape; margin: 10mm; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #081c30; margin: 0; padding: 12px; font-size: 10px; }
-          .header { display: flex; justify-content: space-between; border-bottom: 2.5px solid #004b87; padding-bottom: 8px; margin-bottom: 12px; }
-          .header h1 { font-size: 18px; margin: 0; color: #002855; font-weight: 700; letter-spacing: -0.5px; }
-          .header p { margin: 2px 0 0; color: #64748b; font-size: 10px; }
-          .kpis { display: flex; gap: 8px; margin-bottom: 12px; }
-          .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; }
-          .kpi-title { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: bold; }
-          .kpi-value { font-size: 14px; font-weight: bold; margin-top: 3px; color: #081c30; }
-          .filtros { font-size: 10px; background: #e8f3fa; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; color: #002855; border: 1px solid #cbd5e1; }
-          table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+          @page { size: A4 landscape; margin: 8mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #081c30; margin: 0; padding: 10px; font-size: 9.5px; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2.5px solid #004b87; padding-bottom: 8px; margin-bottom: 10px; }
+          .header h1 { font-size: 17px; margin: 0; color: #002855; font-weight: 700; letter-spacing: -0.5px; }
+          .header p { margin: 2px 0 0; color: #64748b; font-size: 9.5px; }
+          .kpis { display: flex; gap: 8px; margin-bottom: 10px; }
+          .kpi-box { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; background: #f8fafc; }
+          .kpi-title { font-size: 8.5px; text-transform: uppercase; color: #64748b; font-weight: bold; }
+          .kpi-value { font-size: 13.5px; font-weight: bold; margin-top: 2px; color: #081c30; }
+          .filtros { font-size: 9px; background: #e8f3fa; padding: 5px 8px; border-radius: 4px; margin-bottom: 10px; color: #002855; border: 1px solid #cbd5e1; }
+          table { width: 100%; border-collapse: collapse; font-size: 9px; }
           th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid #cbd5e1; font-size: 8.5px; text-transform: uppercase; color: #002855; }
           td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
-          tr:nth-child(even) td { background-color: #f8fafc; }
-          .tfoot td { font-weight: bold; background: #e8f3fa; border-top: 2px solid #004b87; font-size: 10.5px; color: #002855; }
+          tr:nth-child(even) td { background-color: #fbfcfe; }
+          .tfoot td { font-weight: bold; background: #e8f3fa; border-top: 2px solid #004b87; font-size: 10px; color: #002855; }
         </style>
       </head>
       <body>
@@ -527,9 +633,9 @@ export const RelatoriosPage: React.FC = () => {
             <h1>BANESTES • RISK & COMPLIANCE</h1>
             <p>Relatório Analítico de Apontamentos, Restrições e Auditoria de Bloqueios</p>
           </div>
-          <div style="text-align: right; font-size: 10px; color: #64748b;">
+          <div style="text-align: right; font-size: 9.5px; color: #64748b;">
             Emissão: ${dataHoraEmissao}<br />
-            Total: ${restricoesFiltradas.length} registros
+            Total: ${gruposOrdenados.length} ocorrências consolidadas (${restricoesFiltradas.length} itens)
           </div>
         </div>
 
@@ -566,17 +672,18 @@ export const RelatoriosPage: React.FC = () => {
               <th style="text-align: center;">Ocorrência</th>
               <th style="text-align: center;">Status</th>
               <th style="text-align: center;">Impacto</th>
+              <th style="text-align: center;">Política</th>
               <th>Discriminação Técnica</th>
             </tr>
           </thead>
           <tbody>
-            ${linhasHtml || '<tr><td colspan="8" style="text-align: center; padding: 20px;">Nenhum registro encontrado.</td></tr>'}
+            ${linhasHtml || '<tr><td colspan="9" style="text-align: center; padding: 20px;">Nenhum registro encontrado.</td></tr>'}
           </tbody>
           <tfoot>
             <tr class="tfoot">
-              <td colspan="3">TOTAL GERAL FILTRADO (${restricoesFiltradas.length} itens)</td>
+              <td colspan="3">TOTAL GERAL FILTRADO (${restricoesFiltradas.length} itens em ${gruposOrdenados.length} registros consolidados)</td>
               <td style="text-align: right; color: #004b87;">${formatarMoeda(valorTotalTabela)}</td>
-              <td colspan="4"></td>
+              <td colspan="5"></td>
             </tr>
           </tfoot>
         </table>
@@ -590,7 +697,7 @@ export const RelatoriosPage: React.FC = () => {
       printWindow.print();
     }, 250);
   };
-
+  
   return (
     <div className="space-y-6 font-sans">
       {/* CABEÇALHO */}
@@ -635,7 +742,6 @@ export const RelatoriosPage: React.FC = () => {
 
       {/* 1. SEÇÃO DE FILTROS E BUSCA */}
       <section className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs space-y-4 text-left">
-        {/* ATALHOS RÁPIDOS DE DATA */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="font-poppins font-semibold text-slate-500 uppercase mr-1 text-[11px]">Período:</span>
@@ -667,9 +773,7 @@ export const RelatoriosPage: React.FC = () => {
           </button>
         </div>
 
-        {/* INPUTS DE FILTRAGEM HARMONIZADOS COM TIPO DE CLIENTE */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-          {/* Busca Global */}
           <div className="sm:col-span-2 lg:col-span-2">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Busca Global
@@ -686,7 +790,6 @@ export const RelatoriosPage: React.FC = () => {
             />
           </div>
 
-          {/* NOVO: Tipo de Proponente (PF / PJ) */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Proponente
@@ -705,7 +808,6 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Classificação */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Classificação
@@ -722,7 +824,6 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Situação de Risco */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Situação de Risco
@@ -748,7 +849,6 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Status Operacional (Inicia em 'Ativa') */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Status Operacional
@@ -767,7 +867,6 @@ export const RelatoriosPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Período (Início) */}
           <div className="min-w-0">
             <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
               Período (Início)
@@ -836,13 +935,13 @@ export const RelatoriosPage: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. TABELA DETALHADA COM ORDENAÇÃO E PAGINAÇÃO */}
+          {/* 3. TABELA DETALHADA COM AGREGAÇÃO DE OCORRÊNCIAS E EXPANSÃO */}
           <section className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden text-left">
             <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">Registros Detalhados da Auditoria</h3>
                 <p className="text-sm text-slate-500">
-                  Exibindo {restricoesPaginadas.length} de {restricoesFiltradas.length} apontamentos filtrados.
+                  Exibindo {gruposPaginados.length} de {gruposOrdenados.length} ocorrências consolidadas ({restricoesFiltradas.length} apontamentos individuais).
                 </p>
               </div>
             </div>
@@ -883,7 +982,7 @@ export const RelatoriosPage: React.FC = () => {
                       className="px-6 py-3.5 cursor-pointer hover:text-slate-800 select-none font-poppins"
                     >
                       <div className="flex items-center gap-1">
-                        Data Ocorrência
+                        Ocorrência
                         {campoOrdenacao === 'dataOcorrencia' && (ordemAsc ? ' ▲' : ' ▼')}
                       </div>
                     </th>
@@ -908,7 +1007,7 @@ export const RelatoriosPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {restricoesPaginadas.length === 0 ? (
+                  {gruposPaginados.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                         <p className="font-poppins text-base font-semibold text-slate-600">Nenhum registro encontrado</p>
@@ -922,44 +1021,104 @@ export const RelatoriosPage: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    restricoesPaginadas.map((r) => {
-                      const doc = obterDocCliente(r);
-                      const tipoPessoa = obterTipoPessoaCliente(r);
-                      const isAtiva = r.status === 'ATIVA';
+                    gruposPaginados.map((g) => {
+                      const isAtiva = g.status === 'ATIVA';
+                      const temMultiplos = g.itens.length > 1;
+                      const expandido = gruposExpandidos.has(g.idGrupo);
 
                       return (
-                        <tr key={r?.id || Math.random()} className="hover:bg-[#e8f3fa]/20 transition-colors">
-                          <td className="px-6 py-4 font-semibold text-slate-800 align-middle">
+                        <tr key={g.idGrupo} className="hover:bg-[#e8f3fa]/20 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-slate-800 align-top">
                             <div className="flex items-center gap-2">
-                              <span>{r.clienteNome || 'Cliente'}</span>
+                              <span>{g.clienteNome || 'Cliente'}</span>
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                                {tipoPessoa}
+                                {g.tipoPessoa}
                               </span>
                             </div>
-                            {doc && (
+                            {g.documento && (
                               <span className="block text-xs font-normal text-slate-400 font-mono mt-0.5">
-                                Documento: {formatarCpfCnpj(doc)}
+                                Documento: {formatarCpfCnpj(g.documento)}
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 font-semibold align-middle">
+                          <td className="px-6 py-4 font-semibold align-top">
                             <span
                               className={`inline-block px-2 py-0.5 text-xs rounded border ${
-                                r.tipoCodigo === 'FRAUDE'
+                                g.tipoCodigo === 'FRAUDE'
                                   ? 'bg-red-50 text-red-700 border-red-200'
-                                  : r.tipoCodigo === 'BLOQUEIO_JUDICIAL'
+                                  : g.tipoCodigo === 'BLOQUEIO_JUDICIAL'
                                   ? 'bg-purple-50 text-purple-700 border-purple-200'
                                   : 'bg-amber-50 text-amber-700 border-amber-200'
                               }`}
                             >
-                              {r.tipoCodigo}
+                              {g.tipoCodigo}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-slate-900 font-medium align-middle">{formatarMoeda(r.valor || 0)}</td>
-                          <td className="px-6 py-4 text-slate-700 font-mono text-xs font-medium align-middle">
-                            {formatarDataBR(r.dataOcorrencia)}
+
+                          {/* COLUNA DE VALOR COM CAIXA DE EXPANSÃO NÍTIDA E ESPAÇOSA */}
+                          <td className="px-6 py-4 text-slate-900 font-medium align-top">
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-slate-900 font-mono text-sm whitespace-nowrap">
+                                  {formatarMoeda(g.valorTotal)}
+                                </span>
+                                {temMultiplos && (
+                                  <button
+                                    type="button"
+                                    onClick={() => alternarExpansao(g.idGrupo)}
+                                    className="p-1 text-slate-400 hover:text-[#004b87] hover:bg-[#e8f3fa] rounded-md transition-all cursor-pointer inline-flex items-center justify-center shrink-0"
+                                    title={expandido ? 'Ocultar lançamentos individuais' : 'Ver lançamentos que compõem este valor total'}
+                                  >
+                                    <svg
+                                      className={`w-3.5 h-3.5 transform transition-transform duration-200 ${
+                                        expandido ? 'rotate-180 text-[#004b87]' : ''
+                                      }`}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </button>
+                                )}
+                                {temMultiplos && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                                    {g.itens.length}x
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* CAIXA DE DRILL-DOWN FORMATADA SEM QUEBRA DE LINHAS */}
+                              {temMultiplos && expandido && (
+                                <div className="mt-2.5 min-w-[215px] bg-slate-50/95 border border-slate-200/90 rounded-xl p-2.5 shadow-2xs text-left animate-in fade-in duration-150">
+                                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200/80 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-poppins">
+                                    <span>Lançamentos</span>
+                                    <span>Subtotal</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {g.itens.map((item, idx) => (
+                                      <div
+                                        key={item.id || idx}
+                                        className="flex items-center justify-between gap-3 text-xs py-0.5 font-mono"
+                                      >
+                                        <span className="text-slate-600 text-[11px] whitespace-nowrap">
+                                          {formatarDataBR(item.dataOcorrencia)}
+                                        </span>
+                                        <span className="font-bold text-slate-800 text-[11px] whitespace-nowrap">
+                                          {formatarMoeda(item.valor || 0)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 text-center align-middle">
+
+                          <td className="px-6 py-4 text-slate-700 font-mono text-xs font-medium align-top">
+                            {formatarDataBR(g.dataOcorrencia)}
+                          </td>
+                          <td className="px-6 py-4 text-center align-top">
                             <span
                               className={`w-[78px] h-6 inline-flex items-center justify-center text-[11px] font-bold rounded-md border tracking-wide font-sans text-center ${
                                 isAtiva
@@ -967,33 +1126,45 @@ export const RelatoriosPage: React.FC = () => {
                                   : 'bg-emerald-100 text-[#00874c] border-emerald-200'
                               }`}
                             >
-                              {r.status}
+                              {g.status}
                             </span>
                           </td>
 
-                          {/* Impacto e Motivo Discriminado */}
-                          <td className="px-6 py-4 align-middle">
-                            {r.bloqueante ? (
-                              <div>
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] uppercase font-poppins">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
-                                  Bloqueante
-                                </span>
-                                <span className="block text-[11px] font-medium text-red-700 mt-0.5">
-                                  {r.motivoBloqueio}
-                                </span>
+                          {/* IMPACTO NA CONCESSÃO COM BADGE DA POLÍTICA APLICADA */}
+                          <td className="px-6 py-4 align-top">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {g.bloqueante ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] uppercase font-poppins">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
+                                    Bloqueante
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] uppercase font-poppins">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                    Tolerado
+                                  </span>
+                                )}
+
+                                {/* TAG DA VERSÃO DA POLÍTICA */}
+                                {g.versaoPolitica && g.versaoPolitica !== 'N/A' && (
+                                  <span
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#e8f3fa] text-[#004b87] border border-[#004b87]/20 font-mono"
+                                    title="Versão da Política de Risco aplicada à época desta ocorrência"
+                                  >
+                                    Política {g.versaoPolitica}
+                                  </span>
+                                )}
                               </div>
-                            ) : (
-                              <div>
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] uppercase font-poppins">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                  Tolerado
-                                </span>
-                                <span className="block text-[11px] text-slate-500 mt-0.5">
-                                  {r.motivoBloqueio}
-                                </span>
-                              </div>
-                            )}
+
+                              <span
+                                className={`block text-[11px] font-medium mt-0.5 ${
+                                  g.bloqueante ? 'text-red-700' : 'text-slate-500'
+                                }`}
+                              >
+                                {g.motivoBloqueio}
+                              </span>
+                            </div>
                           </td>
                         </tr>
                       );
