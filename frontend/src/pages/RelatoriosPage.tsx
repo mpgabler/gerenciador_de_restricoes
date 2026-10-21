@@ -60,7 +60,7 @@ export const RelatoriosPage: React.FC = () => {
   const [politicas, setPoliticas] = useState<PoliticaRiscoDTO[]>([]);
   const [carregando, setCarregando] = useState<boolean>(true);
 
-  // 1. Estados de Filtros e Busca (Status Operacional padrão definido como 'ATIVA')
+  // 1. Estados de Filtros e Busca (Status Operacional padrão: 'ATIVA')
   const [busca, setBusca] = useState<string>('');
   const [tipoPessoaFiltro, setTipoPessoaFiltro] = useState<string>('TODOS');
   const [tipoFiltro, setTipoFiltro] = useState<string>('TODOS');
@@ -203,7 +203,7 @@ export const RelatoriosPage: React.FC = () => {
     });
   };
 
-  // Motor analítico que enriquece os registros para auditoria
+  // Motor analítico com princípio de Irretroatividade: acumula apenas ocorrências da mesma versão de política
   const restricoesAuditadas = useMemo<RestricaoAuditada[]>(() => {
     const agora = new Date();
     const politicaPadrao = politicas.find((p) => p.ativo) || politicas[0] || {
@@ -213,15 +213,40 @@ export const RelatoriosPage: React.FC = () => {
       vigenciaInicio: '2026-01-01',
     };
 
-    const acumuladoAtivoPorCliente = new Map<string, number>();
+    // Helper interno para localizar a política vigente à época de uma ocorrência específica
+    const obterPoliticaDaEpoca = (dataOcorrStr?: string | null): PoliticaRiscoDTO => {
+      if (!dataOcorrStr) return politicaPadrao;
+      const partesData = dataOcorrStr.split('T')[0].split('-');
+      let dataOcorr: Date;
+      if (partesData.length === 3) {
+        dataOcorr = new Date(Number(partesData[0]), Number(partesData[1]) - 1, Number(partesData[2]), 23, 59, 59);
+      } else {
+        dataOcorr = new Date(dataOcorrStr || agora);
+      }
+
+      return politicas.find((p) => {
+        const inicio = new Date(p.vigenciaInicio);
+        const fim = p.vigenciaFim ? new Date(p.vigenciaFim) : new Date(8640000000000000);
+        return dataOcorr >= inicio && dataOcorr <= fim;
+      }) || politicaPadrao;
+    };
+
+    // 1. Acúmulo segregado por Cliente + Versão da Política (sem contaminação retroativa entre versões)
+    const acumuladoPorClienteEVersao = new Map<string, number>();
+
     listaSeguraRestricoes.forEach((r) => {
       if (r.status === 'ATIVA' && r.tipoCodigo === 'INADIMPLENCIA') {
+        const pol = obterPoliticaDaEpoca(r.dataOcorrencia);
         const idKey = r.clienteId || r.clienteNome || 'unknown';
-        const valorAtual = acumuladoAtivoPorCliente.get(idKey) || 0;
-        acumuladoAtivoPorCliente.set(idKey, valorAtual + (Number(r.valor) || 0));
+        const versaoKey = pol.versao || 'v1.0';
+        const chaveComposta = `${idKey}_${versaoKey}`;
+
+        const valorAtual = acumuladoPorClienteEVersao.get(chaveComposta) || 0;
+        acumuladoPorClienteEVersao.set(chaveComposta, valorAtual + (Number(r.valor) || 0));
       }
     });
 
+    // 2. Classificação individual de auditoria
     return listaSeguraRestricoes.map((r) => {
       if (r.tipoCodigo === 'FRAUDE') {
         return {
@@ -250,18 +275,17 @@ export const RelatoriosPage: React.FC = () => {
           dataOcorr = new Date(r.dataOcorrencia || agora);
         }
 
-        const politicaDaEpoca = politicas.find((p) => {
-          const inicio = new Date(p.vigenciaInicio);
-          const fim = p.vigenciaFim ? new Date(p.vigenciaFim) : new Date(8640000000000000);
-          return dataOcorr >= inicio && dataOcorr <= fim;
-        }) || politicaPadrao;
+        const politicaDaEpoca = obterPoliticaDaEpoca(r.dataOcorrencia);
 
         const diffTempo = agora.getTime() - dataOcorr.getTime();
         const diasAtraso = Math.max(0, Math.floor(diffTempo / (1000 * 60 * 60 * 24)));
         const idKey = r.clienteId || r.clienteNome || 'unknown';
+        const versaoKey = politicaDaEpoca.versao || 'v1.0';
+        const chaveComposta = `${idKey}_${versaoKey}`;
 
+        // O teto financeiro é confrontado apenas contra o montante somado da mesma política
         const valorAvaliado = r.status === 'ATIVA'
-          ? (acumuladoAtivoPorCliente.get(idKey) || Number(r.valor) || 0)
+          ? (acumuladoPorClienteEVersao.get(chaveComposta) || Number(r.valor) || 0)
           : (Number(r.valor) || 0);
 
         const excedeTeto = valorAvaliado > politicaDaEpoca.tetoInadimplencia;
@@ -346,7 +370,6 @@ export const RelatoriosPage: React.FC = () => {
     setGruposExpandidos(new Set());
   };
 
-  // Filtragem combinada resiliente com suporte ao tipo PF/PJ
   const restricoesFiltradas = useMemo(() => {
     const termoBusca = busca.trim().toLowerCase();
     const termoAlfanumerico = busca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -388,7 +411,7 @@ export const RelatoriosPage: React.FC = () => {
     });
   }, [restricoesAuditadas, mapaClientes, mapaClientesPorNome, busca, tipoPessoaFiltro, tipoFiltro, statusFiltro, bloqueioFiltro, situacaoRiscoDesabilitada, dataInicio, dataFim]);
 
-  // Agrupamento dos apontamentos filtrados por Cliente + Tipo + Status + Vigência Normativa
+  // Agrupamento consolidado por Cliente + Classificação + Status + Versão Normativa
   const gruposFiltrados = useMemo<GrupoRestricaoAuditada[]>(() => {
     const mapa = new Map<string, GrupoRestricaoAuditada>();
 
@@ -398,7 +421,6 @@ export const RelatoriosPage: React.FC = () => {
       const idKey = r.clienteId || r.clienteNome || 'unknown';
       const versaoPol = r.versaoPolitica || 'padrao';
 
-      // Chave de agrupamento: agrega itens sob a mesma política/período, status e classificação
       const chave = `${idKey}_${r.tipoCodigo}_${r.status}_${versaoPol}`;
 
       if (!mapa.has(chave)) {
@@ -436,7 +458,6 @@ export const RelatoriosPage: React.FC = () => {
     return Array.from(mapa.values());
   }, [restricoesFiltradas, mapaClientes, mapaClientesPorNome]);
 
-  // Ordenação dinâmica sobre os grupos consolidados
   const gruposOrdenados = useMemo(() => {
     return [...gruposFiltrados].sort((a, b) => {
       let valorA: any = a[campoOrdenacao as keyof GrupoRestricaoAuditada];
@@ -538,7 +559,6 @@ export const RelatoriosPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Impressão A4 com a Coluna de Política Aplicada
   // Impressão A4 / PDF com Agregação e Composição Detalhada
   const imprimirRelatorioCompleto = () => {
     const dataHoraEmissao = new Date().toLocaleString('pt-BR');
@@ -556,7 +576,6 @@ export const RelatoriosPage: React.FC = () => {
       const versaoTexto = g.versaoPolitica && g.versaoPolitica !== 'N/A' ? g.versaoPolitica : '—';
       const temMultiplos = g.itens.length > 1;
 
-      // Sub-bloco visual impresso que detalha os lançamentos somados
       const subLancamentosHtml = temMultiplos
         ? `
           <div style="margin-top: 4px; padding: 3px 5px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; text-align: left;">
@@ -697,7 +716,7 @@ export const RelatoriosPage: React.FC = () => {
       printWindow.print();
     }, 250);
   };
-  
+
   return (
     <div className="space-y-6 font-sans">
       {/* CABEÇALHO */}
@@ -892,7 +911,7 @@ export const RelatoriosPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 2. INDICADORES RESUMIDOS */}
+           {/* 2. INDICADORES RESUMIDOS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 text-left">
             <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs">
               <span className="font-poppins text-xs font-semibold uppercase tracking-wider text-slate-500 block">
@@ -933,7 +952,7 @@ export const RelatoriosPage: React.FC = () => {
                 {baixadasFiltradas.length} de {totalFiltradas} ocorrências baixadas
               </p>
             </div>
-          </div>
+          </div> 
 
           {/* 3. TABELA DETALHADA COM AGREGAÇÃO DE OCORRÊNCIAS E EXPANSÃO */}
           <section className="bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden text-left">
