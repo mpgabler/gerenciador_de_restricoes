@@ -82,6 +82,11 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+    		<groupId>com.microsoft.onnxruntime</groupId>
+    		<artifactId>onnxruntime</artifactId>
+    		<version>1.19.2</version>
+		</dependency>
 	</dependencies>
 
 	<build>

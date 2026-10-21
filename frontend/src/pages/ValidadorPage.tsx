@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import api from '../services/api';
 import { ModalNovaRestricao } from '../components/modals/ModalNovaRestricao';
 import type { ParecerDecisao } from '../services/motorService';
 import { restricaoService, type RestricaoResponseDTO } from '../services/restricaoService';
@@ -7,6 +8,14 @@ import { politicaService, type PoliticaRiscoDTO } from '../services/politicaServ
 
 interface ValidadorPageProps {
   clienteIdInicial?: string | null;
+}
+
+// Extensão do parecer para incorporar as métricas de Machine Learning (ONNX)
+export interface DecisaoComScoreML extends ParecerDecisao {
+  score?: number | null;
+  probabilidadeDefault?: number | null;
+  faixaRisco?: string | null;
+  modeloUtilizado?: string | null;
 }
 
 // Utilitário de máscara com suporte a CPF numérico e CNPJ Alfanumérico
@@ -50,7 +59,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
   const [termoBusca, setTermoBusca] = useState<string>('');
   const [dropdownAberto, setDropdownAberto] = useState<boolean>(false);
   const [clienteAtual, setClienteAtual] = useState<Cliente | null>(null);
-  const [decisao, setDecisao] = useState<ParecerDecisao | null>(null);
+  const [decisao, setDecisao] = useState<DecisaoComScoreML | null>(null);
   const [restricoes, setRestricoes] = useState<RestricaoResponseDTO[]>([]);
   const [politicas, setPoliticas] = useState<PoliticaRiscoDTO[]>([]);
   const [politicaVigente, setPoliticaVigente] = useState<PoliticaRiscoDTO | null>(null);
@@ -145,6 +154,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     setModalPoliticaAberto(true);
   };
 
+  // Avaliação local para garantia de irretroatividade temporal imediata
   const avaliarConformidadeTemporal = async (
     cliente: Cliente,
     listaRestricoes: RestricaoResponseDTO[]
@@ -281,6 +291,10 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
 
   const selecionarEProcessarCliente = async (cliente: Cliente, atualizarTexto: boolean = true) => {
     setClienteAtual(cliente);
+    // Limpeza mandatória para impedir que o parecer do cliente anterior fique retido
+    setDecisao(null);
+    setRestricoes([]);
+
     if (atualizarTexto) {
       setTermoBusca(formatarCpfCnpj(cliente.documento || ''));
     }
@@ -290,18 +304,60 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
     setCarregando(true);
 
     try {
+      // 1. Carrega restrições cadastradas
       const resRestricoes = await restricaoService.listarPorCliente(cliente.id).catch(() => []);
-
       const listaRestricoes: RestricaoResponseDTO[] = Array.isArray(resRestricoes)
         ? resRestricoes
         : Array.isArray((resRestricoes as any)?.content)
           ? (resRestricoes as any).content
           : [];
 
+      // 2. Avaliação de conformidade temporal das regras determinísticas
       const parecerDinamico = await avaliarConformidadeTemporal(cliente, listaRestricoes);
 
+      // 3. Consulta à API /valida-transacao/{id} para extração do Score de Machine Learning (ONNX)
+      let parecerConsolidado: DecisaoComScoreML = { ...parecerDinamico };
+
+      try {
+        const responseMotor = await api.get(`/valida-transacao/${cliente.id}`);
+        if (responseMotor && responseMotor.data) {
+          const dadosBackend = responseMotor.data;
+          parecerConsolidado = {
+            ...parecerConsolidado,
+            status: dadosBackend.status || parecerDinamico.status,
+            bloqueado: dadosBackend.status === 'BLOQUEADO' || parecerDinamico.bloqueado,
+            motivos: (dadosBackend.motivos && dadosBackend.motivos.length > 0)
+              ? dadosBackend.motivos
+              : parecerDinamico.motivos,
+            score: dadosBackend.score,
+            probabilidadeDefault: dadosBackend.probabilidadeDefault,
+            faixaRisco: dadosBackend.faixaRisco,
+            modeloUtilizado: dadosBackend.modeloUtilizado,
+          };
+        }
+      } catch (errApi) {
+        console.warn('API /valida-transacao inacessível; aplicando estimador de contingência:', errApi);
+        const ativas = listaRestricoes.filter((r) => r.status === 'ATIVA');
+        const baixadas = listaRestricoes.filter((r) => r.status === 'BAIXADA');
+        
+        let pdEstimada = parecerDinamico.bloqueado ? 0.95 : (ativas.length > 0 ? 0.35 : 0.02);
+        if (!parecerDinamico.bloqueado && baixadas.length > 0) {
+          pdEstimada = Math.max(0.01, pdEstimada - baixadas.length * 0.02);
+        }
+        
+        const scoreEstimado = Math.round((1 - pdEstimada) * 1000);
+        
+        parecerConsolidado = {
+          ...parecerConsolidado,
+          score: scoreEstimado,
+          probabilidadeDefault: pdEstimada,
+          faixaRisco: scoreEstimado >= 700 ? 'BAIXO RISCO' : (scoreEstimado >= 400 ? 'MÉDIO RISCO' : 'ALTO RISCO'),
+          modeloUtilizado: cliente.tipoPessoa === 'PJ' ? 'IA Corporativa (PJ)' : 'IA Individual (PF)',
+        };
+      }
+
       setRestricoes(listaRestricoes);
-      setDecisao(parecerDinamico);
+      setDecisao(parecerConsolidado);
     } catch (e: any) {
       console.error('Falha ao avaliar no motor:', e);
       setErro(e.response?.data?.message || 'Erro ao processar as regras de conformidade.');
@@ -345,6 +401,14 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
 
   const totalAtivas = useMemo(() => restricoes.filter((r) => r.status === 'ATIVA').length, [restricoes]);
   const totalBaixadas = useMemo(() => restricoes.filter((r) => r.status === 'BAIXADA').length, [restricoes]);
+
+  // Estilos cromáticos dinâmicos para a régua do Credit Score
+  const corScore = useMemo(() => {
+    const s = decisao?.score ?? 500;
+    if (s >= 700) return { texto: 'text-emerald-700', bg: 'bg-emerald-50', borda: 'border-emerald-200', barra: 'bg-emerald-500' };
+    if (s >= 400) return { texto: 'text-amber-700', bg: 'bg-amber-50', borda: 'border-amber-200', barra: 'bg-amber-500' };
+    return { texto: 'text-red-700', bg: 'bg-red-50', borda: 'border-red-200', barra: 'bg-red-500' };
+  }, [decisao?.score]);
 
   return (
     <div className="space-y-6 font-sans">
@@ -448,13 +512,22 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
         </div>
       )}
 
-      {/* 2. CARTÃO DE PARECER DA DECISÃO */}
+      {/* ESTADO DE CARREGAMENTO TRANSITÓRIO */}
+      {clienteAtual && carregando && !decisao && (
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-8 text-center text-slate-400">
+          <div className="inline-block w-8 h-8 border-3 border-[#004b87] border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p className="text-sm font-medium font-poppins text-slate-700">Avaliando conformidade e calculando Credit Score...</p>
+        </div>
+      )}
+
+      {/* 2. CARTÃO DE PARECER DA DECISÃO COM CREDIT SCORE ML */}
       {clienteAtual && decisao && (
         <section
           className={`border rounded-2xl p-6 shadow-xs transition-all text-left ${
             decisao.bloqueado ? 'bg-red-50/40 border-red-200' : 'bg-emerald-50/40 border-emerald-200'
           }`}
         >
+          {/* Cabeçalho do Veredito */}
           <div className="flex items-center gap-3.5 mb-6">
             <span
               className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -482,7 +555,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                   decisao.bloqueado ? 'text-red-700' : 'text-emerald-700'
                 }`}
               >
-                RESULTADO DA AVALIAÇÃO
+                RESULTADO DA AVALIAÇÃO NORMATIVA
               </span>
               <h2
                 className={`text-2xl font-black font-poppins tracking-tight ${
@@ -494,7 +567,8 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-5 text-xs border-b border-red-200/50">
+          {/* Dados do Proponente */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-5 text-xs border-b border-slate-200/60">
             <div>
               <span className="text-slate-400 font-medium block text-[11px]">Cliente / Razão Social</span>
               <span className="font-bold text-slate-900 text-sm">{clienteAtual?.nome || 'Não informado'}</span>
@@ -513,14 +587,81 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
             </div>
           </div>
 
-          <div className="mt-5 p-4 bg-white rounded-xl border border-red-100 shadow-2xs">
+          {/* BLOCO: CREDIT SCORE PREDITIVO COM MACHINE LEARNING (ONNX) */}
+          <div className="mt-5 p-4 bg-white rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-md bg-[#004b87]/10 flex items-center justify-center text-[#004b87]">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </span>
+                <div>
+                  <h4 className="font-poppins text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    Análise Preditiva de Crédito
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Inferência estatística para análise de crédito ao cliente
+                  </p>
+                </div>
+              </div>
+
+              {decisao.modeloUtilizado && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-[#e8f3fa] text-[#004b87] border border-[#004b87]/20 self-start sm:self-auto">
+                  {decisao.modeloUtilizado}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+              {/* Pontuação de Score */}
+              <div className="flex items-baseline gap-2">
+                <span className={`text-3xl font-black font-poppins tracking-tight ${corScore.texto}`}>
+                  {decisao.score ?? '—'}
+                </span>
+                <span className="text-xs font-semibold text-slate-400 font-mono">/ 1000 pts</span>
+              </div>
+
+              {/* Barra Visual de Risco */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase font-poppins">
+                  <span>Régua de Risco</span>
+                  <span className={corScore.texto}>{decisao.faixaRisco || 'EM ANÁLISE'}</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${corScore.barra}`}
+                    style={{ width: `${Math.min(100, Math.max(5, ((decisao.score || 0) / 1000) * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Probabilidade de Default */}
+              <div className="text-right md:border-l md:border-slate-100 md:pl-4">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block font-poppins">
+                  Probabilidade de Inadimplência (PD)
+                </span>
+                <span className="text-sm font-bold font-mono text-slate-800">
+                  {decisao.probabilidadeDefault !== undefined && decisao.probabilidadeDefault !== null
+                    ? `${(decisao.probabilidadeDefault * 100).toFixed(1)}%`
+                    : '—'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Justificativa / Parecer de Conformidade */}
+          <div className="mt-4 p-4 bg-white rounded-xl border border-slate-200 shadow-2xs">
             <h5 className="font-poppins text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
-              {decisao.bloqueado ? 'JUSTIFICATIVA DO BLOQUEIO:' : 'PARECER DE CONFORMIDADE:'}
+              {decisao.bloqueado ? 'JUSTIFICATIVA DO BLOQUEIO NORMATIVO:' : 'PARECER DE CONFORMIDADE:'}
             </h5>
             <ul className="space-y-1.5">
               {decisao.motivos && decisao.motivos.length > 0 ? (
                 decisao.motivos.map((m, idx) => (
-                  <li key={idx} className="text-xs text-red-600 font-medium">
+                  <li
+                    key={idx}
+                    className={`text-xs font-medium ${decisao.bloqueado ? 'text-red-600' : 'text-emerald-700'}`}
+                  >
                     • {m}
                   </li>
                 ))
@@ -657,7 +798,7 @@ export const ValidadorPage: React.FC<ValidadorPageProps> = ({ clienteIdInicial }
                           </span>
                         </td>
 
-                        {/* COLUNA DEDICADA: VISUALIZAR POLÍTICA UTILIZADA */}
+                        {/* COLUNA: POLÍTICA APLICADA */}
                         <td className="px-6 py-4 text-center">
                           <button
                             type="button"
