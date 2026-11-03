@@ -57,7 +57,7 @@ public class ClienteService {
                 .complemento(dto.complemento())
                 .bairro(dto.bairro())
                 .cidade(dto.cidade())
-                .uf(dto.uf())
+                .uf(dto.uf() != null ? dto.uf().toUpperCase() : null)
                 .cep(dto.cep())
                 .status(StatusCliente.ATIVO)
                 .build();
@@ -88,7 +88,7 @@ public class ClienteService {
     @Transactional(readOnly = true)
     public ClienteResponseDTO buscarPorId(UUID id) {
         Cliente cliente = clienteRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado com ID: " + id));
         return ClienteResponseDTO.fromEntity(cliente);
     }
 
@@ -103,7 +103,7 @@ public class ClienteService {
     @Transactional
     public void excluirLogicamente(UUID id) {
         Cliente cliente = clienteRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado com ID: " + id));
         cliente.inativar();
         clienteRepository.save(cliente);
     }
@@ -119,26 +119,40 @@ public class ClienteService {
     @Transactional
     public ClienteResponseDTO reativar(UUID id) {
         Cliente cliente = clienteRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado com ID: " + id));
         cliente.reativar();
         return ClienteResponseDTO.fromEntity(clienteRepository.save(cliente));
     }
 
     /**
      * Atualiza integralmente os dados cadastrais e de endereço de um cliente existente.
+     * Realiza a sanitização do documento e valida se uma eventual alteração de CPF/CNPJ
+     * não colide com o cadastro de outro proponente na base de dados.
      *
      * @param id  Chave primária do cliente a ser atualizado.
      * @param dto Novos dados a serem aplicados no cadastro.
      * @return DTO com a entidade atualizada.
      * @throws EntityNotFoundException se o cliente não for localizado para o ID informado.
+     * @throws IllegalArgumentException se o novo documento informado já pertencer a outro proponente.
      */
     @Transactional
     public ClienteResponseDTO atualizar(UUID id, ClienteRequestDTO dto) {
         Cliente cliente = clienteRepository.findById(id)
-            .orElseThrow(() -> new EntityNotFoundException("Cliente não encontrado com ID: " + id));
+                .orElseThrow(() -> new EntityNotFoundException("Cliente não encontrado com ID: " + id));
+
+        String docLimpo = dto.documento() != null 
+                ? dto.documento().replaceAll("[^a-zA-Z0-9]", "").toUpperCase() 
+                : "";
+
+        // Se o documento foi alterado, assegura que não colida com outro cliente existente
+        if (!docLimpo.equalsIgnoreCase(cliente.getDocumento())) {
+            if (clienteRepository.existsByDocumento(docLimpo)) {
+                throw new IllegalArgumentException("Já existe outro cliente cadastrado com este documento.");
+            }
+        }
 
         cliente.setNome(dto.nome());
-        cliente.setDocumento(dto.documento());
+        cliente.setDocumento(docLimpo);
         cliente.setTipoPessoa(dto.tipoPessoa());
         cliente.setEmail(dto.email());
         cliente.setTelefone(dto.telefone());
@@ -147,7 +161,7 @@ public class ClienteService {
         cliente.setComplemento(dto.complemento());
         cliente.setBairro(dto.bairro());
         cliente.setCidade(dto.cidade());
-        cliente.setUf(dto.uf());
+        cliente.setUf(dto.uf() != null ? dto.uf().toUpperCase() : null);
         cliente.setCep(dto.cep());
 
         Cliente salvo = clienteRepository.save(cliente);

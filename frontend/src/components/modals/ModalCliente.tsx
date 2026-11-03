@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { clienteService, type Cliente } from '../../services/clienteService';
 
 interface ModalClienteProps {
@@ -8,7 +8,6 @@ interface ModalClienteProps {
   onSucesso: () => void;
 }
 
-// Lista oficial com todas as Unidades da Federação
 const ESTADOS_BRASIL = [
   { sigla: 'AC', nome: 'Acre' },
   { sigla: 'AL', nome: 'Alagoas' },
@@ -43,7 +42,8 @@ const formatarCpf = (valor: string): string => {
   const digitos = valor.replace(/\D/g, '').slice(0, 11);
   return digitos
     .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2') .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 };
 
 const formatarCnpjAlfanumerico = (valor: string): string => {
@@ -51,7 +51,8 @@ const formatarCnpjAlfanumerico = (valor: string): string => {
   return limpo
     .replace(/^([A-Z0-9]{2})([A-Z0-9])/, '$1.$2')
     .replace(/^([A-Z0-9]{2})\.([A-Z0-9]{3})([A-Z0-9])/, '$1.$2.$3')
-    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2') .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
+    .replace(/\.([A-Z0-9]{3})([A-Z0-9])/, '.$1/$2')
+    .replace(/\/([A-Z0-9]{4})([A-Z0-9]{1,2})$/, '$1-$2');
 };
 
 export const formatarTelefone = (valor: string): string => {
@@ -80,7 +81,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
 
-  // Endereço detalhado
+  // Endereço
   const [logradouro, setLogradouro] = useState('');
   const [numero, setNumero] = useState('');
   const [complemento, setComplemento] = useState('');
@@ -93,6 +94,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
   const [erro, setErro] = useState<string | null>(null);
   const [tentouSalvar, setTentouSalvar] = useState(false);
 
+  const containerModalRef = useRef<HTMLDivElement>(null);
   const modoEdicao = Boolean(clienteParaEditar);
 
   useEffect(() => {
@@ -138,6 +140,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
   if (!aberto) return null;
 
   const lidarComMudancaDocumento = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErro(null);
     const raw = e.target.value;
     if (tipoPessoa === 'PF') {
       const digitos = raw.replace(/\D/g, '').slice(0, 11);
@@ -150,6 +153,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
   const lidarComMudancaTipo = (novoTipo: 'PF' | 'PJ') => {
     setTipoPessoa(novoTipo);
+    setErro(null);
     if (novoTipo === 'PF') {
       const digitos = documento.replace(/\D/g, '').slice(0, 11);
       setDocumento(formatarCpf(digitos));
@@ -196,11 +200,13 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
     if (!camposObrigatoriosPreenchidos) {
       setErro('Por favor, preencha todos os campos destacados em vermelho.');
+      containerModalRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     if (!emailValido) {
       setErro('Por favor, informe um endereço de e-mail válido (ex.: usuario@dominio.com).');
+      containerModalRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -208,10 +214,12 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
     if (tipoPessoa === 'PF' && docLimpo.length !== 11) {
       setErro('O CPF deve conter exatamente 11 dígitos numéricos.');
+      containerModalRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (tipoPessoa === 'PJ' && docLimpo.length !== 14) {
-      setErro('O CNPJ deve conter exatamente 14 caracteres.');
+      setErro('O CNPJ deve conter exatamente 14 caracteres alfanuméricos.');
+      containerModalRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -244,17 +252,26 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
     } catch (err: any) {
       console.error('Falha ao salvar cliente:', err);
       const data = err.response?.data;
+      const status = err.response?.status;
 
-      let msg = 'Erro ao registrar cliente. Verifique se os dados estão preenchidos corretamente.';
+      let msg = 'Erro ao processar cadastro do cliente.';
+
       if (data?.errors && Array.isArray(data.errors)) {
         msg = data.errors.map((e: any) => e.defaultMessage || e).join('; ');
       } else if (data?.message) {
         msg = data.message;
-      } else if (data?.error) {
-        msg = data.error;
+      } else if (typeof data === 'string' && data.length > 0 && !data.includes('<!DOCTYPE html>')) {
+        msg = data;
+      } else if (status === 409) {
+        msg = 'Já existe outro cliente cadastrado com este documento (CPF/CNPJ).';
+      } else if (status === 400) {
+        msg = 'Requisição inválida. Verifique os dados informados.';
+      } else if (status === 500) {
+        msg = 'Erro interno do servidor (HTTP 500). Verifique o console do backend.';
       }
 
       setErro(msg);
+      containerModalRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSalvando(false);
     }
@@ -264,7 +281,10 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-[#081c30]/70 backdrop-blur-xs transition-opacity" onClick={onFechar} />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-xl max-h-[90vh] overflow-y-auto font-sans z-10 animate-in fade-in zoom-in-95 duration-150">
+      <div
+        ref={containerModalRef}
+        className="relative bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-full max-w-xl max-h-[90vh] overflow-y-auto font-sans z-10 animate-in fade-in zoom-in-95 duration-150"
+      >
         <div className="sticky top-0 bg-white/95 backdrop-blur-xs p-5 border-b border-slate-100 flex items-center justify-between z-10">
           <div>
             <h3 className="font-poppins text-base font-bold text-slate-800 tracking-tight">
@@ -283,7 +303,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
 
         <form onSubmit={handleSubmit} noValidate className="p-6 space-y-4 text-left">
           {erro && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl flex items-center gap-2.5 animate-shake">
               <svg className="w-4 h-4 shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -390,7 +410,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
             </div>
           </div>
 
-          {/* DADOS DE ENDEREÇO ESTRUTURADO */}
+          {/* Endereço */}
           <div className="pt-2 border-t border-slate-100">
             <h4 className="text-xs font-poppins font-bold uppercase tracking-wider text-[#004b87] mb-2.5">
               Endereço Residencial / Comercial
@@ -474,7 +494,7 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
               </div>
             </div>
 
-            {/* Cidade, UF (Seletor com Estados) e CEP */}
+            {/* Cidade, UF e CEP */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
@@ -494,7 +514,6 @@ export const ModalCliente: React.FC<ModalClienteProps> = ({
                 )}
               </div>
 
-              {/* Seletor de Estados (UF) */}
               <div>
                 <label className="block text-[11px] font-poppins font-semibold text-slate-500 uppercase mb-1">
                   UF <span className="text-red-500">*</span>
